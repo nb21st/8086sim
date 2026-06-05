@@ -1,6 +1,16 @@
 suppressed_warning = -Wno-unused-label -Wno-unused-variable
 
-release : main.c
-	cc main.c -o decode -std=c89 -Wall -Wpedantic -O2 $(suppressed_warning)
-debug : main.c
-	cc main.c -g -o decode -std=c89 -Wall -Wpedantic -O0 $(suppressed_warning)
+release: decoder.c
+	@mkdir -p build
+	cc decoder.c -o build/decode -std=c89 -Wall -Wpedantic -O2 $(suppressed_warning)
+
+debug: decoder.c
+	@mkdir -p build
+	cc decoder.c -g -o build/decode -Wall -Wpedantic -O0 $(suppressed_warning)
+
+tester: tester.go
+	@mkdir -p build
+	go build -o build/test tester.go
+
+clean:
+	@rm build/decode build/test
