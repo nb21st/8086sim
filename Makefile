@@ -1,12 +1,14 @@
 suppressed_warning = -Wno-unused-label -Wno-unused-variable
 
+all: release tester
+
 release: decoder.c
 	@mkdir -p build
-	cc decoder.c -o build/decode -std=c89 -Wall -Wpedantic -O2 $(suppressed_warning)
+	cc decoder8086.c -o build/decode8086 -std=c89 -Wall -Wpedantic -O2 $(suppressed_warning)
 
 debug: decoder.c
 	@mkdir -p build
-	cc decoder.c -g -o build/decode -Wall -Wpedantic -O0 $(suppressed_warning)
+	cc decoder8086.c -g -o build/decode8086 -Wall -Wpedantic -O0 $(suppressed_warning)
 
 tester: tester.go
 	@mkdir -p build

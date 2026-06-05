@@ -21,7 +21,7 @@ func main() {
 	}
 	
 	exec_path = filepath.Dir(exec)
-	decoder_exec = exec_path + "/decode"
+	decoder_exec = exec_path + "/decode8086"
 	samples_path = exec_path + "/../samples"
 
 	samples_dir, err := os.ReadDir(samples_path)
@@ -60,10 +60,8 @@ func main() {
 }
 
 func tester_compare(filename string, index int) {
-	/* NOTE: Extremely error prone. It just works */
-
-	var status string
-	var matched bool
+	reason := ""
+	matched := true
 	
 	sample_bin_filename    := fmt.Sprintf("%v/%v", samples_path, filename)
 	generated_asm_filename := fmt.Sprintf("%v/tmp_%v.asm", exec_path, index)
@@ -75,6 +73,7 @@ func tester_compare(filename string, index int) {
 
 	if err := decode_cmd.Run(); err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
+			reason = "decoder failed"
 			matched = false
 			goto result
 		} else {
@@ -85,6 +84,7 @@ func tester_compare(filename string, index int) {
 	
 	if err := nasm_cmd.Run(); err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
+			reason = "nasm failed"
 			matched = false
 			goto result
 		} else {
@@ -96,9 +96,10 @@ func tester_compare(filename string, index int) {
 	if err := cmp_cmd.Run(); err != nil {
 		if exiterr, ok := err.(*exec.ExitError); ok {
 			if exiterr.ExitCode() == 1 {
+				reason = "binaries don't match"
 				matched = false
 			} else {
-				fmt.Println("ERROR: Unexpected Exit Code from cmp command")
+				fmt.Println("ERROR: Unexpected Exit Code from cmp command.")
 				defer panic(err)
 				goto cleanup
 			}
@@ -106,19 +107,16 @@ func tester_compare(filename string, index int) {
 			defer panic(err)
 			goto cleanup
 		}
-	} else {
-		matched = true
 	}
 	
 result:	
 	if matched {
-		status = "1"
 		pass_count += 1
+		test_results[index] = fmt.Sprintf("(PASSED) %v", filename)
 	} else {
-		status = "0"
+		test_results[index] = fmt.Sprintf("(FAILED) %v\nReason: %v.", filename, reason)
 	}
 
-	test_results[index] = fmt.Sprintf("[%v] %v", status, filename)
 
 cleanup:
 	os.Remove(generated_asm_filename)
