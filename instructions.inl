@@ -1,15 +1,15 @@
-#ifdef _8086emu_INST_TABLE
+#ifdef INST_TABLE
 #define INST(mne_in, in2, in3, in4, in5, in6, in7, in8, in9, in10, in11, in12) \
 	{op_##mne_in, {in2, in3, in4, in5, in6, in7, in8, in9, in10, in11, in12}},
 #define ALT_INST INST
 #endif
 
-#ifdef _8086emu_INST_MNE_ENUM
+#ifdef INST_MNE_ENUM
 #define INST(mne_in, in2, in3, in4, in5, in6, in7, in8, in9, in10, in11, in12) op_##mne_in,
 #define ALT_INST(mne_in, in2, in3, in4, in5, in6, in7, in8, in9, in10, in11, in12)
 #endif
 
-#ifdef _8086emu_INST_MNE_STRING_LITERAL
+#ifdef INST_MNE_STRING_LITERAL
 #define INST(mne_in, in2, in3, in4, in5, in6, in7, in8, in9, in10, in11, in12) #mne_in,
 #define ALT_INST(mne_in, in2, in3, in4, in5, in6, in7, in8, in9, in10, in11, in12)
 #endif
@@ -80,9 +80,9 @@ ALT_INST(cmp, BIN(1e, 0011110 ), IMP_S(0), IMP_D(1), IMP_REG(0), W, DATA, DATA_I
 	INST(jcxz,   BIN(e3, 11100011), IP_INC8, _, _, _, _, _, _, _, _, _)
 	
 
-#undef _8086emu_INST_ARR
-#undef _8086emu_INST_MNE_ENUM
-#undef _8086emu_INST_MNE_STRING_LITERAL
+#undef INST_ARR
+#undef INST_MNE_ENUM
+#undef INST_MNE_STRING_LITERAL
 
 #undef INST
 #undef ALT_INST

@@ -21,10 +21,15 @@ typedef u32 b32;
 				  (in >= 5 ? 1 << 4 : 0) | (in >= 6 ? 1 << 5 : 0) | \
 				  (in >= 7 ? 1 << 6 : 0) | (in >= 8 ? 1 << 7 : 0))
 
+/* There is no guard/safety for overflow */
+#define MAX_READ 1024 * 1024
+#define MAX_INSTRUCTIONS 256 * 256
+#define MAX_INSTRUCTION_ASM_SIZE 48
+
 enum opcode {
 	op_none,
 
-#define _8086emu_INST_MNE_ENUM
+#define INST_MNE_ENUM
 #include "instructions.inl"
 
 	op_count
@@ -68,10 +73,10 @@ struct instruction_encoding {
 	struct instruction_bits bits[12];
 };
 
-const char *_8086emu_mnemonic_arr[] = {
+const char *mnemonic_arr[] = {
 	"",
 
-#define _8086emu_INST_MNE_STRING_LITERAL
+#define INST_MNE_STRING_LITERAL
 #include "instructions.inl"
 
 };
@@ -87,22 +92,21 @@ enum operand_type {
 
 struct instruction_encoding instruction_table[] = {
 
-#define _8086emu_INST_TABLE
+#define INST_TABLE
 #include "instructions.inl"
 
 };
 
-/* The design is incredibly unstable */
 struct instruction_operand {
 	enum operand_type type;
 	union {
 		struct {
-			u8 rm; /* is also correspond to reg union below */
+			u8 rm; /* is also correspond to reg union below if mod == 0b00 */
 			i16 displacement;
 		} effective_address;
 		u8 reg;
 		i16 immediate_data;
-		i16 instruction_pointer_increment;
+		i16 ip_inc;
 	} value;
 };
 
@@ -111,6 +115,22 @@ struct instruction {
 	enum opcode opcode;
 	b8 wide_mode;
 	u8 size;
+};
+
+struct asm_buffer {
+	void *memory_block;
+	
+	char *texts;
+
+	/* For printing control transfer assembly but seems */
+	u16 *label_numbers;
+	b8 *is_jumps;
+	i16 *ip_incs;
+	u8 *instruction_sizes;
+	u32 label_count;
+	
+	u32 bytes_per_text;
+	u32 instruction_count;
 };
 
 const char *reg_field_asm_text[8][2] = {
@@ -138,39 +158,140 @@ const char *mem_field_asm_text[8][3] = {
 void debug_binary_string(char *output_byte, u32 byte_count, u8 const *input_byte) {
 	u32 i, j;
 
-	for (i = 0; i < 6; ++i) {
-		u32 k = i * 9;
+	for (i = 0; i < byte_count; ++i) {
 		for (j = 0; j < 8; ++j) {
-			if (i < byte_count) {
-				output_byte[k + j] = '0' + (input_byte[i] >> (7 - j) & 1);
-			} else {
-				output_byte[k + j] = '.';
-			}
+			output_byte[i * 9 + j] = '0' + (input_byte[i] >> (7 - j) & 1);
 		}
-		output_byte[k + j] = ' ';
+		output_byte[i * 9 + j] = ' ';
+	}
+	
+	output_byte[i * 9 - 1] = '\0';
+}
+
+void print_all_instructions(FILE *output, struct asm_buffer const asm_buf, u8 const *bytes, b32 const debug_mode) {
+	char const *label = "\nlabel%u:\n";
+	int i, at = 0;
+	
+	fprintf(output, "\tbits 16\n\n");
+	
+	for (i = 0; i < asm_buf.instruction_count; i += 1) {
+		if (asm_buf.label_numbers[i]) {
+			fprintf(output, label, asm_buf.label_numbers[i] - 1);
+		}
+		if (debug_mode) {
+			char debug_text[8 * 6 + 7];
+			debug_binary_string(debug_text, asm_buf.instruction_sizes[i], bytes + at);
+			fprintf(output, "\n;;; %04x: %s\n", at, debug_text);
+			at += asm_buf.instruction_sizes[i];
+		}
+
+		fprintf(output, asm_buf.texts + asm_buf.bytes_per_text * i);
+		fprintf(output, "\n");
+	}
+
+	if (asm_buf.label_numbers[i]) {
+		fprintf(output, label, asm_buf.label_numbers[i] - 1);
 	}
 }
 
-err print_instruction8086(struct instruction inst, FILE *output) {
-	char const *templates[3] = {"%s\n", "%s %s\n", "%s %s, %s\n"};
+err get_and_mark_label_number(struct asm_buffer *asm_buf, i32 const ip_inc, u32 const instruction_number, u32 *out_label_number) {
+	i32 direction = 1;
+	i32 displacement = ip_inc;
+	u32 label_line = instruction_number + 1;
+	
+	if (displacement < 0) {
+		direction = -1;
+		displacement *= -1;
+	}
+	
+	while (displacement > 0) {
+		displacement -= asm_buf->instruction_sizes[label_line - 1];
+		label_line += direction;
+	}
+
+	if (displacement < 0) {
+		fprintf(stderr, "ERROR: get_label's instruction pointer increment is not aligned\n");
+		return 1;
+	}
+
+	if (asm_buf->label_numbers[label_line] == 0) {
+		asm_buf->label_count += 1;
+		asm_buf->label_numbers[label_line] = asm_buf->label_count;
+	}
+
+	*out_label_number = (u32)asm_buf->label_numbers[label_line];
+	
+	return 0;
+}
+
+err assign_all_labels(struct asm_buffer *asm_buf) {
+	char temp[MAX_INSTRUCTION_ASM_SIZE];
+	u32 i, label_number;
+	err error;
+
+	for (i = 0; i < asm_buf->instruction_count; i += 1) {
+		if (asm_buf->is_jumps[i]) {
+			error = get_and_mark_label_number(asm_buf, (i32)asm_buf->ip_incs[i], i, &label_number);
+			if (error) return error;
+			
+			sprintf(temp, asm_buf->texts + asm_buf->bytes_per_text * i, label_number - 1);
+			sprintf(asm_buf->texts + asm_buf->bytes_per_text * i, temp);
+		}
+	}
+
+	return 0;
+}
+
+err asm_buffer_initialize(struct asm_buffer *result) {
+	result->memory_block =
+		calloc(sizeof *result->texts * MAX_INSTRUCTION_ASM_SIZE +
+			   sizeof *result->label_numbers +
+			   sizeof *result->is_jumps +
+			   sizeof *result->ip_incs +
+			   sizeof *result->instruction_sizes,
+			   MAX_INSTRUCTIONS);
+	
+	if (result->memory_block == NULL) return 1;
+
+	result->texts = result->memory_block;
+	result->label_numbers     = (u16 *)(result->texts         + MAX_INSTRUCTIONS);
+	result->is_jumps          = (b8  *)(result->label_numbers + MAX_INSTRUCTIONS);
+	result->ip_incs           = (i16 *)(result->is_jumps      + MAX_INSTRUCTIONS);
+	result->instruction_sizes = (u8  *)(result->ip_incs       + MAX_INSTRUCTIONS);
+	
+	result->label_count = 0;
+	result->bytes_per_text = MAX_INSTRUCTION_ASM_SIZE;
+	result->instruction_count = 0;
+	
+	return 0;
+}
+
+void asm_buffer_uninitialize(struct asm_buffer *asm_buf) {
+	free(asm_buf->memory_block);
+}
+
+err format_instruction(struct instruction inst, struct asm_buffer *asm_buf) {
+	char const *templates[3] = {"\t%s", "\t%s %s", "\t%s %s, %s"};
 	char const *size_templates[3] = {"%s", "byte %s", "word %s"};
-	char const *mnemonic = _8086emu_mnemonic_arr[inst.opcode];
-	char temp_asm[16];
-	char operands_asm[2][16];
+	char const *mnemonic = mnemonic_arr[inst.opcode];
+	
+	char temp_operand_asm[32];
+	char operands_asm[2][32];
 	u32 operand_count = 2;
-	u32 i;
+	u32 i, mode, label_number;
 	
 	for (i = 0; i < 2; i += 1) {
 		u32 size = 0;
+		
 		switch (inst.operands[i].type) {
 		case operand_none:
 			operand_count -= 1;
 			break;
 		case operand_register:
-			sprintf(temp_asm, reg_field_asm_text[inst.operands[i].value.reg][inst.wide_mode]);
+			sprintf(temp_operand_asm, reg_field_asm_text[inst.operands[i].value.reg][inst.wide_mode]);
 			break;
-		case operand_memory: {
-			u32 mode = 0;
+		case operand_memory:
+			mode = 0;
 			if (inst.operands[i].value.effective_address.displacement > 0) {
 				mode = 1;
 			} else if (inst.operands[i].value.effective_address.displacement < 0) {
@@ -178,33 +299,38 @@ err print_instruction8086(struct instruction inst, FILE *output) {
 				mode = 2;
 			}
 			if (inst.opcode != op_mov && inst.operands[1].type == operand_immediate) size = 1 + inst.wide_mode;
-			sprintf(temp_asm, mem_field_asm_text[inst.operands[i].value.effective_address.rm][mode],
+			sprintf(temp_operand_asm, mem_field_asm_text[inst.operands[i].value.effective_address.rm][mode],
 					inst.operands[i].value.effective_address.displacement);
 			break;
-		} case operand_direct_address:
+		case operand_direct_address:
 			if (inst.opcode != op_mov && inst.operands[1].type == operand_immediate) size = 1 + inst.wide_mode;
-			sprintf(temp_asm, "[%u]", inst.operands[i].value.effective_address.displacement);
+			sprintf(temp_operand_asm, "[%u]", inst.operands[i].value.effective_address.displacement);
 			break;
-		case operand_immediate: {
+		case operand_immediate:
 			if (inst.opcode == op_mov) size = 1 + inst.wide_mode;
-			sprintf(temp_asm, "%i", inst.operands[i].value.immediate_data);
+			sprintf(temp_operand_asm, "%i", inst.operands[i].value.immediate_data);
 			break;
-		} case operand_ip_inc:
-			sprintf(temp_asm, "label ; %i", inst.operands[i].value.instruction_pointer_increment);
+		case operand_ip_inc:
+			asm_buf->is_jumps[asm_buf->instruction_count] = TRUE;
+			asm_buf->ip_incs[asm_buf->instruction_count] = inst.operands[i].value.ip_inc;
+			sprintf(temp_operand_asm, "label%%u ; %i", inst.operands[i].value.ip_inc);
 			break;
 		default:
 			fprintf(stderr, "ERROR: Unknown Operand Type\n");
-			return -1;
+			return 1;
 		}
-		sprintf(operands_asm[i], size_templates[size], temp_asm);
+		
+		sprintf(operands_asm[i], size_templates[size], temp_operand_asm);
 	}
 
-	fprintf(output, templates[operand_count], mnemonic, operands_asm[0], operands_asm[1]);
+	sprintf(asm_buf->texts + asm_buf->instruction_count * asm_buf->bytes_per_text,
+			templates[operand_count], mnemonic, operands_asm[0], operands_asm[1]);
+	asm_buf->instruction_sizes[asm_buf->instruction_count] = inst.size;		
 
 	return 0;
 }
 
-err decode8086(u8 const *memory, u32 const at, struct instruction *inst, b32 debug_mode) {
+err decode(u8 const *memory, u32 const at, struct instruction *inst, b32 const debug_mode) {
 	u8 const *bytes = &memory[at];
 	u32 bytes_read;
 	u32 bits_read;
@@ -296,7 +422,7 @@ err decode8086(u8 const *memory, u32 const at, struct instruction *inst, b32 deb
 				has_ip_inc_hi = TRUE;
 			default:
 				fprintf(stderr, "ERROR: Unknown bits type\n");
-				return -1;
+				return 1;
 			}
 		
 			bits_read += cur_bits->bit_count;
@@ -308,7 +434,7 @@ next_encoding:
 	
 	if (cur_enc == instruction_table + LEN(instruction_table)) {
 		fprintf(stderr, "ERROR: No encoding with valid bits_literal was found\n");
-		return -1;
+		return 1;
 	}
 	
 	{
@@ -373,59 +499,68 @@ next_encoding:
 		if (control_transfer_mode) {
 			struct instruction_operand *operand = &inst->operands[0]; /* maybe */
 			operand->type = operand_ip_inc;
-			operand->value.instruction_pointer_increment = (ip_inc_hi << 8) | ip_inc_lo;
+			operand->value.ip_inc = (ip_inc_hi << 8) | ip_inc_lo;
 			/* sign_extension */
 			if (!wide_control_transfer_mode) {
-				if (operand->value.instruction_pointer_increment >> 7) {
-					operand->value.instruction_pointer_increment |= 0xff00;
+				if (operand->value.ip_inc >> 7) {
+					operand->value.ip_inc |= 0xff00;
 				}
 			}
 		}
 	}
 
-	if (debug_mode) {
-		char byte_text[8 * 6 + 6];
-		debug_binary_string(byte_text, inst->size, bytes);
-		fprintf(stderr, "%08x: %s| ", at, byte_text);
-	}
-
 	return 0;
 }
 
-err disasm8086(u8 const *memory, i32 const total_bytes, FILE *output, b32 const debug_mode) {
+err disasm(u8 const *memory, i32 const total_bytes, FILE *output, b32 const debug_mode) {
+	struct asm_buffer asm_buf;
 	i32 bytes_left = total_bytes;
 	err error;
 	
-	fprintf(output, "bits 16\n\n");
-	
+	error = asm_buffer_initialize(&asm_buf);
+	if (error) return error;
+		
 	while (bytes_left > 0) {
 		u32 const bytes_at = total_bytes - bytes_left;
 		struct instruction inst = {0};
-		error = decode8086(memory, bytes_at, &inst, debug_mode);
+		
+		error = decode(memory, bytes_at, &inst, debug_mode);
 		if (error) return error;
-		print_instruction8086(inst, output);
+		
+		error = format_instruction(inst, &asm_buf);
+		if (error) return error;
+		
 		bytes_left -= inst.size;
+		asm_buf.instruction_count += 1;
 	}
 
 	if (bytes_left < 0) {
 		fprintf(stderr, "ERROR: Decoder overread\n");
+		asm_buffer_uninitialize(&asm_buf);
 		return 1;
 	}
+
+	error = assign_all_labels(&asm_buf);
+	if (error) return error;
 	
+	print_all_instructions(output, asm_buf, memory, debug_mode);
+	
+	asm_buffer_uninitialize(&asm_buf);
 	return 0;
 }
 
 err load_memory_from_file(void *memory, char *input_filename, u32 *bytes_read) {
 	FILE *input_file = fopen(input_filename, "rb");
-	if (input_file == NULL) return -1;
+	if (input_file == NULL) return 1;
+	
 	*bytes_read = (u32)fread(memory, 1, 1024 * 1024, input_file);
-	if (ferror(input_file)) return -1;
+	if (ferror(input_file)) return 1;
+	
 	fclose(input_file);
 	return 0;
 }
 
 int main(int arg_count, char **args) {
-	void *memory;
 	FILE *output = stdout;
 	b32 debug_mode = FALSE;
 	char *input_filename = NULL;
@@ -434,6 +569,8 @@ int main(int arg_count, char **args) {
 	
 	u32 bytes_read, i;
 	err error;
+	
+	void *memory = malloc(MAX_READ);	
 	
 	for (i = 1; i < arg_count; i += 1) {
 		if (args[i][0] == '-') {
@@ -459,15 +596,14 @@ int main(int arg_count, char **args) {
 	if (output_filename != NULL) output = fopen(output_filename, "wb");
 	if (output == NULL) goto misuse;
 
-	memory = malloc(1024 * 1024);
-	
 	error = load_memory_from_file(memory, input_filename, &bytes_read);
 	if (error) goto misuse;
 
-	error = disasm8086((u8 *)memory, (u32)bytes_read, output, debug_mode);
+	error = disasm((u8 *)memory, (u32)bytes_read, output, debug_mode);
 	if (error) goto failed_exit;
 	
 	if (output != stdout || output != NULL) fclose(output);
+	free(memory);
 	return 0;
 	
 misuse:
@@ -477,8 +613,10 @@ misuse:
 		   "options:\n"
 		   "\t-o <file>\n\t\twrite output to file\n"
 		   "\t-d\n\t\tenable debug mode\n");
+	free(memory);
 	return 1;
 failed_exit:
-	printf("Exit Failed\n");
+	free(memory);
+	fprintf(stderr, "Exit Failed\n");
 	return 1;
 }
