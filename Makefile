@@ -1,4 +1,4 @@
-suppressed_warning = -Wno-unused-label -Wno-unused-variable
+suppressed_warning = -Wno-unused-variable -Wno-maybe-uninitialized
 
 all: release tester
 
