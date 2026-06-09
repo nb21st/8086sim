@@ -33,9 +33,7 @@
 #define DATA_IF_W {bits_data_if_w, 8}
 #define ADDR_LO   {bits_disp_lo,   8}
 #define ADDR_HI   {bits_disp_hi,   8}
-#define IP_INC8   {bits_ip_inc_lo, 8}
-#define IP_INC_LO {bits_ip_inc_lo, 8}
-#define IP_INC_HI {bits_ip_inc_hi, 8}
+#define IP_INC8   {bits_ip_inc,    8}
 
 #define IMP_S(val)   {bits_s,   0, val}
 #define IMP_W(val)   {bits_w,   0, val}
@@ -267,8 +265,6 @@ ALT_INST(ret, BIN(c2, 11000010), IMP_S(0), IMP_W(1), DATA, DATA_IF_W, _, _, _, _
 #undef ADDR_LO
 #undef ADDR_HI
 #undef IP_INC8
-#undef IP_INC_LO
-#undef IP_INC_HI
 
 #undef IMP_S
 #undef IMP_W

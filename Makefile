@@ -3,7 +3,7 @@ TARGET_EXEC = decode8086
 SRC = ./decoder8086.c
 TEST_EXEC = test
 TEST_SRC = ./tester.go
-SUPRESSED_WARNING = -Wno-unused-variable -Wno-unused-but-set-variable -Wno-maybe-uninitialized
+SUPRESSED_WARNING =
 CFLAGS = -std=c89 -Wall -Wpedantic
 
 all: release tester
@@ -15,6 +15,10 @@ release: decoder8086.c
 debug: decoder8086.c
 	@mkdir -p build
 	$(CC) $(SRC) -o $(BUILD_DIR)/$(TARGET_EXEC) $(CFLAGS) $(SUPRESSED_WARNING) -O0 -g -D_DEBUG
+
+debug_loud: decoder8086.c
+	@mkdir -p build
+	$(CC) $(SRC) -o $(BUILD_DIR)/$(TARGET_EXEC) $(CFLAGS) -O0 -g -D_DEBUG
 
 tester: tester.go
 	@mkdir -p build
