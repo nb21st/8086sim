@@ -1,4 +1,5 @@
 #include <stdio.h>
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -20,17 +21,8 @@ typedef u32 b32;
 				  (in >= 3 ? 1 << 2 : 0) | (in >= 4 ? 1 << 3 : 0) | \
 				  (in >= 5 ? 1 << 4 : 0) | (in >= 6 ? 1 << 5 : 0) | \
 				  (in >= 7 ? 1 << 6 : 0) | (in >= 8 ? 1 << 7 : 0))
-#ifdef _DEBUG
-#define ASSERT(exp, msg) if (!exp) {fprintf(stderr, "ASSERTION AT LINE %u: " msg "\n", __LINE__); *(int *)0 = 0; }
-#define LOG_MSG(msg) fprintf(stderr, "LOG: " msg "\n")
-#define LOG_VAR(var, conversion_specifier) fprintf(stderr, "LOG: " #var " = %" #conversion_specifier "\n", var)
-#else
-#define ASSERT(exp, msg) {}
-#define LOG_MSG(msg) {}
-#define LOG_VAR(var, conversion_specifier) {}
-#endif
 
-/* There is no guard/safety for overflow */
+/* TODO: Make decoder capable of disassemble binary larger than 1MiB and take more than 64 KiB instructions */
 #define MAX_BYTES_READ 1024 * 1024
 #define MAX_INSTRUCTIONS 256 * 256
 #define MAX_INSTRUCTION_ASM_SIZE 48
@@ -98,9 +90,7 @@ const char *mnemonic_arr[] = {
 enum operand_type {
 	operand_none,
 	operand_memory,
-	operand_direct_address,
 	operand_register,
-	operand_segment_register,
 	operand_immediate,
 	operand_ip_inc
 };
@@ -140,13 +130,12 @@ struct instruction {
 	u8 size;
 };
 
+/* TODO: Implement a way to label jump that consumes less space, O(1) ideally */
 struct asm_buffer {
 	void *memory_block;
 	
 	char *texts;
 
-	/* For printing control transfer assembly
-	   but it really feels clunky. Maybe improvement can be made here.*/
 	u16 *label_numbers;
 	b8 *is_cond_jumps;
 	i16 *ip_incs;
@@ -157,20 +146,13 @@ struct asm_buffer {
 	u32 instruction_count;
 };
 
-char const *reg_field_asm_text[8][2] = {
-	{"al", "ax"},
-	{"cl", "cx"},
-	{"dl", "dx"},
-	{"bl", "bx"},
-	{"ah", "sp"},
-	{"ch", "bp"},
-	{"dh", "si"},
-	{"bh", "di"},
+char const *reg_field_asm_text[3][8] = {
+	{"al", "cl", "dl", "bl", "ah", "ch", "dh", "bh"},
+	{"ax", "cx", "dx", "bx", "sp", "bp", "si", "di"},
+	{"es", "cs", "ss", "ds"},
 };
 
-char const *seg_reg_field_asm_text[4] = {"es", "cs", "ss", "ds"};
-
-char const *mem_field_asm_text[8][3] = {
+char const *mem_field_asm_text[9][3] = {
 	{"[bx + si]", "[bx + si + %u]", "[bx + si - %u]"},
 	{"[bx + di]", "[bx + di + %u]", "[bx + di - %u]"},
 	{"[bp + si]", "[bp + si + %u]", "[bp + si - %u]"},
@@ -179,6 +161,7 @@ char const *mem_field_asm_text[8][3] = {
 	{"[di]"     , "[di + %u]"     , "[di - %u]"     },
 	{"[bp]"     , "[bp + %u]"     , "[bp - %u]"     },
 	{"[bx]"     , "[bx + %u]"     , "[bx - %u]"     },
+	{"[%u]"     , "[%u]"          , "[%u]"          },
 };
 
 void debug_output_binary_instruction(FILE *pipe, i32 at, u32 byte_count, u8 const *input) {
@@ -328,24 +311,19 @@ void format_instruction(struct instruction inst, struct asm_buffer *asm_buf, u32
 	}
 
 	for (i = 0; i < 2; i += 1) {
-		if (inst.operands[i].type == operand_none) {
-			operand_count -= 1;
-			continue;
+		if (inst.operands[i].type != operand_none) {
+			if (i == 0) strcat(target_asm, " ");
+			else strcat(target_asm, ", ");
 		}
-
-		if (i == 0) strcat(target_asm, " ");
-		else strcat(target_asm, ", ");
 		
 		switch (inst.operands[i].type) {
+		case operand_none:
+			operand_count -= 1;
+			continue;
 		case operand_register:
 			sprintf(temp_operand_asm,
-					reg_field_asm_text[inst.operands[i].value.reg % 8][inst.operands[i].value.reg / 8]);
+					reg_field_asm_text[inst.operands[i].value.reg / 8][inst.operands[i].value.reg % 8]);
 		break;
-		case operand_segment_register:
-			sprintf(temp_operand_asm, seg_reg_field_asm_text[inst.operands[i].value.reg]);
-		break;
-		/* NOTE: Maybe we should merge `operand_memory` with
-		         `operand_direct_address` to reduce redundancy here */
 		case operand_memory:
 			ea_mode = 0;
 			if (inst.operands[i].value.effective_address.displacement > 0) {
@@ -363,28 +341,13 @@ void format_instruction(struct instruction inst, struct asm_buffer *asm_buf, u32
 			}
 
 			if (inst.flags & flags_segment) {
-				strcat(target_asm, seg_reg_field_asm_text[(inst.flags & flags_segment_register) >> 4]);
+				strcat(target_asm, reg_field_asm_text[2][(inst.flags & flags_segment_register) >> 4]);
 				strcat(target_asm, ":");
 			}
 
 			sprintf(temp_operand_asm,
 					mem_field_asm_text[inst.operands[i].value.effective_address.rm][ea_mode],
 					inst.operands[i].value.effective_address.displacement);
-		break;
-		case operand_direct_address:
-			if (inst.opcode != op_mov && (inst.operands[1].type == operand_immediate ||
-										  inst.operands[1].type == operand_none ||
-										  is_shift_instruction(inst.opcode))) {
-				if (inst.flags & flags_wide) strcat(target_asm, "word ");
-				else strcat(target_asm, "byte ");
-			}
-
-			if (inst.flags & flags_segment) {
-				strcat(target_asm, seg_reg_field_asm_text[(inst.flags & flags_segment_register) >> 4]);
-				strcat(target_asm, ":");
-			}
-			
-			sprintf(temp_operand_asm, "[%u]", inst.operands[i].value.effective_address.displacement);
 		break;
 		case operand_immediate:
 			if (inst.opcode == op_mov) {
@@ -399,9 +362,6 @@ void format_instruction(struct instruction inst, struct asm_buffer *asm_buf, u32
 			asm_buf->ip_incs[asm_buf->instruction_count] = inst.operands[i].value.ip_inc;
 			
 			sprintf(temp_operand_asm, "label%%u ; %i", inst.operands[i].value.ip_inc);
-		break;
-		default:
-			ASSERT(FALSE, "Unknown operand.");
 		break;
 		}
 		
@@ -553,8 +513,8 @@ next_encoding:
 		} else if (seg_reg_exist) {
 			struct instruction_operand *operand = &inst->operands[reg_is_src];
 			
-			operand->type = operand_segment_register;
-			operand->value.reg = bits[bits_seg_reg];
+			operand->type = operand_register;
+			operand->value.reg = bits[bits_seg_reg] + 8 * 2;
 		} else if (v_exist) {
 			struct instruction_operand *operand = &inst->operands[1];
 
@@ -573,11 +533,10 @@ next_encoding:
 			if (rm_reg_mode) {
 				operand->type = operand_register;
 				operand->value.reg = bits[bits_rm] + 8 * wide_rm_mode;
-			} else if (direct_address_mode) {
-				operand->type = operand_direct_address;
 			} else {
 				operand->type = operand_memory;
-				operand->value.effective_address.rm = bits[bits_rm];
+				if (direct_address_mode) operand->value.effective_address.rm = 8;
+				else operand->value.effective_address.rm = bits[bits_rm];
 			}
 			
 			operand->value.effective_address.displacement = (u16)((bits[bits_disp_hi] << 8) | bits[bits_disp_lo]);
@@ -593,7 +552,6 @@ next_encoding:
 		}
 
 		if (immediate_mode) {
-			/* be the opposite operand of whatever is already assigned */
 			struct instruction_operand *operand =
 				&inst->operands[!((reg_exist && reg_is_src) || (rm_exist && rm_is_src)) &&
 								(reg_exist || rm_exist)];
@@ -747,7 +705,7 @@ misuse:
 			"\t\t   -d1 Comment binary instruction to output if exit success.\n\n"
 			"\t\t   -d2 Print assembly instruction as the program is decoding/formatting. "
 			           "However, Labels will not be displayed correctly.\n\n"
-			"\t\t   -d3 Print both binary and assembly instruction as the program"
+			"\t\t   -d3 Print both binary and assembly instruction as the program "
 			           "is decoding/formatting.\n\n");
 	return 1;
 failed_exit:
