@@ -1,150 +1,14 @@
-#include <stdio.h>
+#include "decoder8086.h"
 
-#include <stdlib.h>
-#include <string.h>
-
-typedef int err;
-typedef signed char i8;
-typedef signed short i16;
-typedef signed int i32;
-typedef unsigned char u8;
-typedef unsigned short u16;
-typedef unsigned int u32;
-typedef u8 b8;
-typedef u32 b32;
-
-#define TRUE 1
-#define FALSE 0
-
-#define LEN(array) (sizeof array / sizeof *array)
-#define MASK(in) ((in >= 1 ? 1 << 0 : 0) | (in >= 2 ? 1 << 1 : 0) | \
-				  (in >= 3 ? 1 << 2 : 0) | (in >= 4 ? 1 << 3 : 0) | \
-				  (in >= 5 ? 1 << 4 : 0) | (in >= 6 ? 1 << 5 : 0) | \
-				  (in >= 7 ? 1 << 6 : 0) | (in >= 8 ? 1 << 7 : 0))
-
-/* TODO: Make decoder capable of disassemble binary larger than 1MiB and take more than 64 KiB instructions */
-#define MAX_BYTES_READ 1024 * 1024
-#define MAX_INSTRUCTIONS 256 * 256
-#define MAX_INSTRUCTION_ASM_SIZE 48
-#define MAX_OPERAND_ASM_SIZE 32
-
-enum opcode {
-	op_none,
-
-#define INST_MNE_ENUM
-#include "instructions.inl"
-
-	op_count
-};
-
-enum mod_field {
-	mod_mem_no_disp,
-	mod_mem_8_disp,
-	mod_mem_16_disp,
-	mod_reg
-};
-
-enum instruction_bits_type {
-	bits_end,
-
-	bits_literal,
-	bits_s,
-	bits_w,
-	bits_d,
-	bits_v,
-	bits_z,
-	bits_mod,
-	bits_reg,
-	bits_seg_reg,
-	bits_rm,
-	bits_disp_lo,
-	bits_disp_hi,
-	bits_data,
-	bits_data_if_w,
-	bits_ip_inc,
-
-	bits_rm_always_w,
-
-	bits_count
-};
-
-struct instruction_bits {
-	enum instruction_bits_type type;
-	u8 bit_count;
-	u8 value;
-};
-
-struct instruction_encoding {
-	enum opcode opcode;
-	struct instruction_bits bits[12];
-};
-
-const char *mnemonic_arr[] = {
-	"",
-
-#define INST_MNE_STRING_LITERAL
-#include "instructions.inl"
-
-};
-
-enum operand_type {
-	operand_none,
-	operand_memory,
-	operand_register,
-	operand_immediate,
-	operand_ip_inc
-};
-
-struct instruction_encoding instruction_table[] = {
-
-#define INST_TABLE
-#include "instructions.inl"
-
-};
-
-enum flags {
-	flags_wide    = 1 << 0,
-	flags_lock    = 1 << 1,
-	flags_rep     = 1 << 2,
-	flags_segment = 1 << 3,
-	flags_segment_register = 3 << 4
-};
-
-struct instruction_operand {
-	enum operand_type type;
-	union {
-		u8 reg;
-		struct {
-			u8 rm;
-			i32 displacement;
-		} effective_address;
-		i32 data;
-		i16 ip_inc;
-	} value;
-};
-
-struct instruction {
-	struct instruction_operand operands[2];
-	enum opcode opcode;
-	u8 flags;
-	u8 size;
-};
-
-/* TODO: Implement a way to label jump that consumes less space, O(1) ideally */
-struct asm_buffer {
-	void *memory_block;
-	
-	char *texts;
-
-	u16 *label_numbers;
-	b8 *is_cond_jumps;
-	i16 *ip_incs;
-	u8 *instruction_sizes;
-	u32 label_count;
-	
-	u32 bytes_per_text;
-	u32 instruction_count;
-};
+char const *help =
+"Usage: decode8086 [options...] file\n"
+"Options:\n"
+"  -o file   Write output to file.\n"
+"  -d[level] Specify debug printing level.\n"
+"    0 No debug printing.\n"
+"    1 Comment binary instruction to output if exit success.\n"
+"    2 Print assembly instruction as the program is decoding/formatting. However, Labels will not be displayed correctly.\n"
+"    3 Print both binary and assembly instruction as the program is decoding/formatting.\n";
 
 char const *reg_field_asm_text[3][8] = {
 	{"al", "cl", "dl", "bl", "ah", "ch", "dh", "bh"},
@@ -162,6 +26,21 @@ char const *mem_field_asm_text[9][3] = {
 	{"[bp]"     , "[bp + %u]"     , "[bp - %u]"     },
 	{"[bx]"     , "[bx + %u]"     , "[bx - %u]"     },
 	{"[%u]"     , "[%u]"          , "[%u]"          },
+};
+
+const char *mnemonic_arr[] = {
+	"",
+
+#define INST_MNE_STRING_LITERAL
+#include "instructions.inl"
+
+};
+
+struct instruction_encoding instruction_table[] = {
+
+#define INST_TABLE
+#include "instructions.inl"
+
 };
 
 void debug_output_binary_instruction(FILE *pipe, i32 at, u32 byte_count, u8 const *input) {
@@ -279,16 +158,16 @@ void asm_buffer_uninitialize(struct asm_buffer *asm_buf) {
 }
 
 b32 is_shift_instruction(enum opcode opcode) {
-	if (opcode >= op_shl && opcode <= op_rcr) return TRUE;
-	return FALSE;
+	return opcode >= op_shl && opcode <= op_rcr;
 }
-
 b32 is_string_instruction(enum opcode opcode) {
-	if (opcode >= op_movs && opcode <= op_stos) return TRUE;
-	return FALSE;
+	return opcode >= op_movs && opcode <= op_stos;
+}
+b32 is_conditional_jump_instruction(enum opcode opcode) {
+	return opcode >= op_je && opcode <= op_jcxz;
 }
 
-void format_instruction(struct instruction inst, struct asm_buffer *asm_buf, u32 const debug_level) {
+void format_instruction(struct instruction inst, struct asm_buffer *asm_buf, u32 bytes_at, u32 const debug_level) {
 	char *target_asm = asm_buf->texts + asm_buf->bytes_per_text * asm_buf->instruction_count;
 	char temp_operand_asm[MAX_OPERAND_ASM_SIZE];
 	u32 operand_count = 2;
@@ -298,22 +177,21 @@ void format_instruction(struct instruction inst, struct asm_buffer *asm_buf, u32
 
 	target_asm[0] = '\t';
 
-	if (inst.flags & flags_lock) {
-		strcat(target_asm, "lock ");
-	} else if (inst.flags & flags_rep) {
-		strcat(target_asm, "rep ");
-	}
+	if (inst.flags >> flags_lock & 1) strcat(target_asm, "lock ");
+	if (inst.flags >> flags_rep & 1) strcat(target_asm, "rep ");
 
 	strcat(target_asm, mnemonic_arr[inst.opcode]);
 
 	if (is_string_instruction(inst.opcode)) {
-		strcat(target_asm, inst.flags & flags_wide ? "w" : "b");
+		strcat(target_asm, inst.flags >> flags_wide & 1 ? "w" : "b");
 	}
 
 	for (i = 0; i < 2; i += 1) {
 		if (inst.operands[i].type != operand_none) {
 			if (i == 0) strcat(target_asm, " ");
-			else strcat(target_asm, ", ");
+			else if ((inst.flags >> flags_far & 1) && inst.operands[i].type == operand_immediate) {
+				strcat(target_asm, ":");
+			} else strcat(target_asm, ", ");
 		}
 		
 		switch (inst.operands[i].type) {
@@ -332,16 +210,18 @@ void format_instruction(struct instruction inst, struct asm_buffer *asm_buf, u32
 				inst.operands[i].value.effective_address.displacement *= -1;
 				ea_mode = 2;
 			}
-			
-			if (inst.opcode != op_mov && (inst.operands[1].type == operand_immediate ||
-										  inst.operands[1].type == operand_none ||
-										  is_shift_instruction(inst.opcode))) {
-				if (inst.flags & flags_wide) strcat(target_asm, "word ");
+
+			if (inst.opcode == op_call || inst.opcode == op_jmp) {
+				if (inst.flags >> flags_far & 1) strcat(target_asm, "far ");
+			} else if (inst.opcode != op_mov && (inst.operands[1].type == operand_immediate ||
+												 inst.operands[1].type == operand_none ||
+												 is_shift_instruction(inst.opcode))) {
+				if (inst.flags >> flags_wide & 1) strcat(target_asm, "word ");
 				else strcat(target_asm, "byte ");
 			}
 
-			if (inst.flags & flags_segment) {
-				strcat(target_asm, reg_field_asm_text[2][(inst.flags & flags_segment_register) >> 4]);
+			if (inst.flags >> flags_segment & 1) {
+				strcat(target_asm, reg_field_asm_text[2][inst.flags >> flags_segment_register & 3]);
 				strcat(target_asm, ":");
 			}
 
@@ -351,17 +231,21 @@ void format_instruction(struct instruction inst, struct asm_buffer *asm_buf, u32
 		break;
 		case operand_immediate:
 			if (inst.opcode == op_mov) {
-				if (inst.flags & flags_wide) strcat(target_asm, "word ");
+				if (inst.flags >> flags_wide & 1) strcat(target_asm, "word ");
 				else strcat(target_asm, "byte ");
 			}
 			
 			sprintf(temp_operand_asm, "%i", inst.operands[i].value.data);
 		break;
-		case operand_ip_inc:
-			asm_buf->is_cond_jumps[asm_buf->instruction_count] = TRUE;
-			asm_buf->ip_incs[asm_buf->instruction_count] = inst.operands[i].value.ip_inc;
-			
-			sprintf(temp_operand_asm, "label%%u ; %i", inst.operands[i].value.ip_inc);
+		case operand_relative_immediate:
+			asm_buf->ip_incs[asm_buf->instruction_count] = inst.operands[i].value.data;
+			if ((asm_buf->is_cond_jumps[asm_buf->instruction_count] =
+				 is_conditional_jump_instruction(inst.opcode))) {
+				sprintf(temp_operand_asm, "label%%u ; %i", inst.operands[i].value.data);
+			} else {
+				if (inst.opcode == op_jmp && !(inst.flags >> flags_wide & 1)) strcat(target_asm, "short "); /* nasm aligned */
+				sprintf(temp_operand_asm, "%i", inst.operands[i].value.data + bytes_at + inst.size);
+			}
 		break;
 		}
 		
@@ -396,7 +280,6 @@ err decode(u8 const *memory, u32 const at, struct instruction *inst, u8 *flags, 
 		bytes_read = 0;
 		bits_read = 0;
 		memset(bits, 0xff, sizeof *bits * bits_count);
-		bits[bits_rm_always_w] = FALSE;
 		
 		for (cur_bits = cur_enc->bits; cur_bits->type != bits_end; cur_bits += 1) {
 			u8 const bits_remain = 8 - bits_read % 8;
@@ -404,7 +287,8 @@ err decode(u8 const *memory, u32 const at, struct instruction *inst, u8 *flags, 
 
 			if (cur_bits->bit_count == 0) bits_value = cur_bits->value;
 			else bits_value = (bytes[bytes_read] >> (bits_remain - cur_bits->bit_count)) & MASK(cur_bits->bit_count);
-			
+
+			/* NOTE: I think this might be a bad design but I just couldn't come up with a good alternative */
 			switch (cur_bits->type) {
 			case bits_literal:
 				if (bits_value != cur_bits->value) {
@@ -416,12 +300,13 @@ err decode(u8 const *memory, u32 const at, struct instruction *inst, u8 *flags, 
 				bits[bits_disp_lo] = 0;
 				bits[bits_disp_hi] = 0;
 				if ((bits[bits_mod] == mod_mem_no_disp && bits[bits_rm] == 6) || bits[bits_mod] == mod_mem_8_disp ||
-					bits[bits_mod] == mod_mem_16_disp) {
+					bits[bits_mod] == mod_mem_16_disp || bits[bits_force_disp] == 1) {
 					bits[bits_disp_lo] = bits_value;
 				} else continue;
 			break;
 			case bits_disp_hi:
-				if ((bits[bits_mod] == mod_mem_no_disp && bits[bits_rm] == 6) || bits[bits_mod] == mod_mem_16_disp) {
+				if ((bits[bits_mod] == mod_mem_no_disp && bits[bits_rm] == 6) || bits[bits_mod] == mod_mem_16_disp ||
+					bits[bits_force_disp] == 1) {
 					bits[bits_disp_hi] = bits_value;
 				} else continue;
 			break;
@@ -437,7 +322,6 @@ err decode(u8 const *memory, u32 const at, struct instruction *inst, u8 *flags, 
 				bits[cur_bits->type] = bits_value;
 			break;
 			}
-		
 			bits_read += cur_bits->bit_count;
 			bytes_read = bits_read / 8;
 		}
@@ -459,14 +343,14 @@ next_encoding:
 	/* Check for flags type of instructions or transfer flags to the instruction */
 	switch (cur_enc->opcode) {
 	case op_lock:
-		*flags |= flags_lock;
+		*flags |= 1 << flags_lock;
 		return 0;
 	case op_rep:
-		*flags |= flags_rep;
+		*flags |= 1 << flags_rep;
 		return 0;
 	case op_segment:
-		*flags |= flags_segment;
-		*flags |= bits[bits_seg_reg] << 4;
+		*flags |= 1 << flags_segment;
+		*flags |= bits[bits_seg_reg] << flags_segment_register;
 		return 0;
 	default:
 		inst->flags = *flags;
@@ -475,7 +359,7 @@ next_encoding:
 	}
 	
 	{
-		b32 const wide_instruction_mode = bits[bits_w];
+		b32 const wide_instruction_mode = bits[bits_w] == 1;
 		b32 const direction = bits[bits_d];
 		
 		b32 const v_exist = bits[bits_v] != -1;
@@ -489,7 +373,7 @@ next_encoding:
 		
 		b32 const rm_exist = bits[bits_rm] != -1;
 		b32 const rm_reg_mode = bits[bits_mod] == mod_reg;
-		b32 const wide_rm_mode = wide_reg_mode || bits[bits_rm_always_w];
+		b32 const wide_rm_mode = wide_reg_mode || (bits[bits_rm_is_w] == 1);
 		b32 const direct_address_mode = bits[bits_mod] == mod_mem_no_disp && bits[bits_rm] == 6;
 		b32 const disp_mode = bits[bits_mod] == mod_mem_8_disp || bits[bits_mod] == mod_mem_16_disp;
 		b32 const wide_disp_mode = bits[bits_mod] == mod_mem_16_disp;
@@ -499,12 +383,14 @@ next_encoding:
 		b32 const wide_immediate_mode = wide_instruction_mode;
 		b32 const sign_immediate_mode = bits[bits_s];
 
-		b32 const control_transfer_mode = bits[bits_ip_inc] != -1;
+		b32 const relative_jump_mode = bits[bits_is_rel_jmp] == 1;
+		b32 const far_mode = bits[bits_is_far] == 1;
 	
-		if (wide_instruction_mode) inst->flags |= flags_wide;
-		else inst->flags &= inst->flags ^ flags_wide;
+		inst->flags |= wide_instruction_mode << flags_wide;
+		inst->flags |= far_mode << flags_far;
+
 		inst->opcode = cur_enc->opcode;
-		
+
 		if (reg_exist) {
 			struct instruction_operand *operand = &inst->operands[reg_is_src];
 			
@@ -539,7 +425,7 @@ next_encoding:
 				else operand->value.effective_address.rm = bits[bits_rm];
 			}
 			
-			operand->value.effective_address.displacement = (u16)((bits[bits_disp_hi] << 8) | bits[bits_disp_lo]);
+			operand->value.effective_address.displacement = (bits[bits_disp_hi] << 8) | bits[bits_disp_lo];
 			
 			/* sign-extension */
 			if (disp_mode && !wide_disp_mode) {
@@ -555,10 +441,11 @@ next_encoding:
 			struct instruction_operand *operand =
 				&inst->operands[!((reg_exist && reg_is_src) || (rm_exist && rm_is_src)) &&
 								(reg_exist || rm_exist)];
-			
-			operand->type = operand_immediate;
+
+			if (relative_jump_mode) operand->type = operand_relative_immediate;
+			else operand->type = operand_immediate;
 			operand->value.data = (bits[bits_data_if_w] << 8) | bits[bits_data];
-			/* sign_extension */
+			/* sign-extension */
 			if (!wide_immediate_mode) {
 				if (sign_immediate_mode && operand->value.data >> 7) {
 					operand->value.data |= 0xffffff00;
@@ -568,15 +455,18 @@ next_encoding:
 			}
 		}
 
-		if (control_transfer_mode) {
-			struct instruction_operand *operand = &inst->operands[0];
+		if (far_mode && immediate_mode) {
+			struct instruction_operand *operands = inst->operands;
+			u32 i = 0;
 			
-			operand->type = operand_ip_inc;
-			operand->value.ip_inc = bits[bits_ip_inc];
-			/* sign_extension */
-			if (operand->value.ip_inc >> 7) {
-				operand->value.ip_inc |= 0xff00;
+			if (bits[bits_disp_lo] != -1) {
+				operands[i].type = operand_immediate;
+				operands[i].value.data = (bits[bits_disp_hi] << 8) | bits[bits_disp_lo];
+				i += 1;
 			}
+			
+			operands[i].type = operand_immediate;
+			operands[i].value.data = (bits[bits_data_if_w] << 8) | bits[bits_data];
 		}
 	}
 
@@ -594,7 +484,7 @@ err disasm(u8 const *memory, i32 const total_bytes, FILE *output, u32 const debu
 		fprintf(stderr, "ERROR: asm_buffer_initialize failed.\n");
 		return 1;
 	}
-		
+	
 	while (bytes_left > 0) {
 		u32 const bytes_at = total_bytes - bytes_left;
 		struct instruction inst = {0};
@@ -602,7 +492,7 @@ err disasm(u8 const *memory, i32 const total_bytes, FILE *output, u32 const debu
 		error = decode(memory, bytes_at, &inst, &flags, debug_level);
 		if (error) return 1;
 		
-		format_instruction(inst, &asm_buf, debug_level);
+		format_instruction(inst, &asm_buf, bytes_at, debug_level);
 		
 		bytes_left -= inst.size;
 		if (inst.opcode != op_none) asm_buf.instruction_count += 1;
@@ -695,18 +585,7 @@ misuse:
 		remove(output_filename);
 	}
 	free(memory);
-	fprintf(stderr, "\nUsage:\n"
-			"\tdecode8086 [options] filename\n"
-			"Options:\n"
-			"\t-o <file>\n\t\tWrite output to file.\n\n"
-			"\t-d0, -d1, -d2, -d3\n"
-			"\t\tSpecify debug printing level.\n"
-			"\t\t   -d0 No debug printing.\n\n"
-			"\t\t   -d1 Comment binary instruction to output if exit success.\n\n"
-			"\t\t   -d2 Print assembly instruction as the program is decoding/formatting. "
-			           "However, Labels will not be displayed correctly.\n\n"
-			"\t\t   -d3 Print both binary and assembly instruction as the program "
-			           "is decoding/formatting.\n\n");
+	fprintf(stderr, help);
 	return 1;
 failed_exit:
 	if (output != stdout && output != NULL) {
