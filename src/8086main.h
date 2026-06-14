@@ -1,7 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 typedef int err;
 typedef signed char i8;
 typedef signed short i16;
@@ -97,7 +93,7 @@ enum operand_type {
 	operand_relative_immediate
 };
 
-enum flags {
+enum instruction_flags {
 	flags_wide,
 	flags_lock,
 	flags_rep,
@@ -125,18 +121,16 @@ struct instruction {
 	u8 size;
 };
 
-/* TODO: Implement a way to label jump that consumes less space, O(1) ideally */
-struct asm_buffer {
-	void *memory_block;
-	
-	char *texts;
+struct instruction_encoding instruction_table[] = {
 
-	u16 *label_numbers;
-	b8 *is_cond_jumps;
-	i16 *ip_incs;
-	u8 *instruction_sizes;
-	u32 label_count;
-	
-	u32 bytes_per_text;
-	u32 instruction_count;
+#define INST_TABLE
+#include "instructions.inl"
+
 };
+
+enum sim_mode {
+	sim_mode_decode,
+	sim_mode_exec
+};
+
+void debug_output_binary_instruction(FILE *pipe, i32 at, u32 byte_count, u8 const *input);

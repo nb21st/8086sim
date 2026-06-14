@@ -21,7 +21,7 @@ func main() {
 	}
 	
 	exec_path = filepath.Dir(exec)
-	decoder_exec = exec_path + "/decode8086"
+	decoder_exec = exec_path + "/8086sim"
 	samples_path = exec_path + "/../samples"
 
 	samples_dir, err := os.ReadDir(samples_path)
@@ -52,6 +52,8 @@ func main() {
 	
 	wg.Wait()
 	
+	fmt.Println("Decoder tests:")
+
 	for _, res := range test_results {
 		fmt.Println(res)
 	}
@@ -67,7 +69,7 @@ func tester_compare(filename string, index int) {
 	generated_asm_filename := fmt.Sprintf("%v/tmp_%v.asm", exec_path, index)
 	generated_bin_filename := fmt.Sprintf("%v/tmp_%v", exec_path, index)
 
-	decode_cmd := exec.Command(decoder_exec, "-o", generated_asm_filename, sample_bin_filename)
+	decode_cmd := exec.Command(decoder_exec, "decode", "-o", generated_asm_filename, sample_bin_filename)
 	nasm_cmd   := exec.Command("nasm", "-o", generated_bin_filename, generated_asm_filename)
 	cmp_cmd    := exec.Command("cmp", sample_bin_filename, generated_bin_filename)
 

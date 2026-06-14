@@ -1,21 +1,26 @@
-8086 Instruction Decoder in C89
-===============================
+8086 Simulator in C89
+=====================
 
 
 Based on Performance-Aware Programming series by Casey Muratori and Intel 8086 Family User's Manual.
 
-Fair amount of the architecture of this code was taken from [Performance-Aware Programming's source code](https://github.com/cmuratori/computer_enhance/tree/main/perfaware/sim86) such as metaprogramming for the instruction encodings.
+Some of the architecture of this software is inspired from [Performance-Aware Programming's source code](https://github.com/cmuratori/computer_enhance/tree/main/perfaware/sim86) such as metaprogramming for the instruction encodings.
+
+This software is not intended to be Intel 8086 emulator!
 
 
 Build and run
 -------------
 
 ```bash
-# Run GNU Make on Linux or just run any C compiler on `decoder8086.c`
+# Run GNU Make on Linux or just run any C compiler on `8086sim.c`
 make
 
 # Decode a binary
-./build/decode8086 samples/05_completionist_decode
+./build/8086sim decode samples/05_completionist_decode
+
+# Execute a binary
+./build/8086sim exec samples/08_challenge_register_movs
 ```
 
 
@@ -24,7 +29,7 @@ Dependency
 
 The decoder has no dependency.
 
-The testing script requires `nasm` assembler to work.
+The decoder testing script requires `nasm` assembler to work.
 
 
 "No AI" Policy

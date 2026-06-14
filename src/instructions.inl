@@ -65,7 +65,7 @@ ALT_INST(mov, BIN(63, 1100011 ), IMP_S(0), IMP_D(0), W, MOD, BIN(00, 000), RM, D
 ALT_INST(mov, BIN(0b, 1011    ), IMP_S(0), IMP_D(1), W, REG, DATA, DATA_IF_W, _, _, _, _)                           /*   Immediate to register                    */
 ALT_INST(mov, BIN(50, 1010000 ), IMP_MOD(0), IMP_REG(0), IMP_RM(6), W, ADDR_LO, ADDR_HI, IMP_D(1), _, _, _)         /*   Memory to accumulator                    */
 ALT_INST(mov, BIN(51, 1010001 ), IMP_MOD(0), IMP_REG(0), IMP_RM(6), W, ADDR_LO, ADDR_HI, IMP_D(0), _, _, _)         /*   Accumulator to memory                    */
-ALT_INST(mov, BIN(23, 100011  ), D, BIN(00, 0), MOD, BIN(00, 0), SR, RM, DISP_LO, DISP_HI, _, _)                    /*   Register|memory to|from segment register */
+ALT_INST(mov, BIN(23, 100011  ), IMP_W(1), D, BIN(00, 0), MOD, BIN(00, 0), SR, RM, DISP_LO, DISP_HI, _)             /*   Register|memory to|from segment register */
 
                                                                                                                     /* push = Push:       */
     INST(push, BIN(ff, 11111111), IMP_W(1), IMP_D(0), MOD, BIN(06, 110), RM, DISP_LO, DISP_HI, _, _, _)             /*   Register|memory  */
@@ -77,7 +77,7 @@ ALT_INST(push, BIN(00, 000     ), IMP_D(1), SR, BIN(06, 110), _, _, _, _, _, _, 
 ALT_INST(pop, BIN(0b, 01011   ), IMP_W(1), IMP_D(1), REG, _, _, _, _, _, _, _)                                      /*   Register         */
 ALT_INST(pop, BIN(00, 000     ), IMP_D(1), SR, BIN(07, 111), _, _, _, _, _, _, _)                                   /*   Segment register */
 
-/* NOTE: operands order doesn't matter but the decoder gotta choose one */                                          /* xchg = Exchange:                */
+                                                                                                                    /* xchg = Exchange:                */
     INST(xchg, BIN(43, 1000011 ), IMP_D(0), W, MOD, REG, RM, DISP_LO, DISP_HI, _, _, _)                             /*   Register|memory with register */
 ALT_INST(xchg, BIN(12, 10010   ), IMP_D(0), IMP_W(1), IMP_MOD(3), IMP_RM(0), REG, _, _, _, _, _)                    /*   Register with accumulator     */
 
@@ -250,7 +250,7 @@ ALT_INST(retf, BIN(ca, 11001010), IMP_S(0), IMP_W(1), DATA, DATA_IF_W, IMP_IS_FA
     INST(segment, BIN(01, 001), SR, BIN(6, 110), _, _, _, _, _, _, _, _)                                            /* segment = Override prefix         */
 
 
-#undef INST_ARR
+#undef INST_TABLE
 #undef INST_MNE_ENUM
 #undef INST_MNE_STRING_LITERAL
 
