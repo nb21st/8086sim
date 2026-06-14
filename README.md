@@ -4,9 +4,9 @@
 
 Based on Performance-Aware Programming series by Casey Muratori and Intel 8086 Family User's Manual.
 
-Some of the architecture of this software is inspired from [Performance-Aware Programming's source code](https://github.com/cmuratori/computer_enhance/tree/main/perfaware/sim86) such as metaprogramming for the instruction encodings.
+Some of the architecture of this software is inspired by [Performance-Aware Programming's source code](https://github.com/cmuratori/computer_enhance/tree/main/perfaware/sim86) such as metaprogramming for the instruction encodings.
 
-This software is not intended to be Intel 8086 emulator!
+This software is not intended to be a proper Intel 8086 emulator!
 
 
 Build and run
