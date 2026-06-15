@@ -259,15 +259,20 @@ err simulate_8086(u8 const *memory, i32 const total_bytes, FILE *output, enum si
 		case sim_mode_decode:
 			format_instruction(NULL, inst, &asm_buf, bytes_at, debug_level);
 			if (inst.opcode != op_none) asm_buf.instruction_count += 1;
+			bytes_left -= inst.size;
 		break;
 		case sim_mode_exec:
-			fprintf(output, "@");
-			format_instruction(output, inst, NULL, bytes_at, debug_level);
+			if (debug_level >= 1) {
+				fprintf(output, "[0x%04x -> 0x%04x]\n",
+						machine_state.instruction_pointer,
+						machine_state.instruction_pointer + inst.size);
+				fprintf(output, "@ ");
+				format_instruction(output, inst, NULL, bytes_at, debug_level);
+			}
 			execute_instruction(output, inst, &machine_state, debug_level);
+			bytes_left = total_bytes - machine_state.instruction_pointer;
 		break;
 		}
-		
-		bytes_left -= inst.size;
 	}
 
 	if (bytes_left < 0) {

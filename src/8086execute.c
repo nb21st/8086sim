@@ -28,7 +28,7 @@ void arithmetic_update_register_flags(FILE *output, u16 *flags, u32 value0, u32 
 	u32 flag_count = 0;
 	u32 result, half_result;
 	u32 i;
-	
+
 	switch (type) {
 	case arithmetic_addition:
 		half_result = (value0 & 0xf) + (value1 & 0xf);
@@ -38,8 +38,9 @@ void arithmetic_update_register_flags(FILE *output, u16 *flags, u32 value0, u32 
 		half_result = (value0 & 0xf) - (value1 & 0xf);
 		result = value0 - value1;
 	break;
-	case arithmetic_multiplication: result = value0 * value1; break;
-	case arithmetic_division: result = value0 / value1; break;
+	default:
+		ASSERT(FALSE, "Unhandled arithmetic operation");
+	break;
 	}
 
 	is_signed[0] = (value0 & s_val) != 0;
@@ -59,7 +60,7 @@ void arithmetic_update_register_flags(FILE *output, u16 *flags, u32 value0, u32 
 			ASSERT(FALSE, "");
 		break;
 		}
-		
+
 		cases[register_flags_overflow] = res;
 	}
 	cases[register_flags_auxiliary_carry] = half_result > 0xf;
@@ -71,7 +72,7 @@ void arithmetic_update_register_flags(FILE *output, u16 *flags, u32 value0, u32 
 		for (i = 0; i < 8; i += 1) one_bit_count += result >> i & 1;
 		cases[register_flags_parity] = one_bit_count % 2 == 0;
 	}
-	
+
 	*flags = 0;
 
 	for (i = 0; i < register_flags_count; i += 1) {
@@ -82,20 +83,34 @@ void arithmetic_update_register_flags(FILE *output, u16 *flags, u32 value0, u32 
 			flag_count += 1;
 		}
 	}
+
+	if (flag_count == 0) fprintf(output, " -");
+}
+
+u32 read_by_width(void *p, b32 wide) {
+	return (u32)(wide ? *(u16 *)p : *(u8 *)p);
+}
+
+void write_by_width(void *p, u32 value, b32 wide) {
+	if (wide) *(u16 *)p = (u16)value;
+	else *(u8 *)p = (u8)value;
 }
 
 void execute_instruction(FILE *output,
 						 struct instruction inst,
 						 struct machine_state *machine_state,
 						 u32 debug_level) {
-	const b32 wide_instruction_mode = inst.flags >> flags_wide & 1;
+	const b32 wide_mode = inst.flags >> flags_wide & 1;
 	void *operands[2];
 	char texts[2][16];
 	char const *string_index;
-	u32 i;
+	u32 i, lval, rval;
+
+	machine_state->instruction_pointer += inst.size;
 
 	for (i = 0; i < 2; i += 1) {
 		switch (inst.operands[i].type) {
+		case operand_none: operands[i] = &operands[i]; break;
 		case operand_register:
 			operands[i] = get_machine_reg(inst.operands[i].value.reg, machine_state);
 			string_index = get_assembly_reg(inst.operands[i].value.reg);
@@ -103,70 +118,113 @@ void execute_instruction(FILE *output,
 		break;
 		case operand_immediate:
 			operands[i] = &inst.operands[i].value.data;
-			sprintf(texts[i], wide_instruction_mode ? "0x%04x" : "0x%02x", (u16)inst.operands[i].value.data);
+			sprintf(texts[i], wide_mode ? "0x%04x" : "0x%02x", (u16)inst.operands[i].value.data);
+		break;
+		case operand_relative_immediate:
+			operands[i] = &inst.operands[i].value.data;
 		break;
 		default:
+			LOG_VAR(inst.operands[i].type, u);
 			ASSERT(FALSE, "Unhandled operand type");
 		break;
 		}
 	}
 
+	lval = read_by_width(operands[0], wide_mode);
+	rval = read_by_width(operands[1], wide_mode);
+
 	switch (inst.opcode) {
 	case op_mov:
-		if (wide_instruction_mode) *(u16 *)operands[0] = *(u16 *)operands[1];
-		else *(u8 *)operands[0] = *(u8 *)operands[1];
+		write_by_width(operands[0], rval, wide_mode);
 		fprintf(output, "%s := %s;\n", texts[0], texts[1]);
 	break;
 	case op_add:
 		fprintf(output, "%s := %s + %s;", texts[0], texts[0], texts[1]);
-		if (wide_instruction_mode) {
-			arithmetic_update_register_flags(output, &machine_state->flags,
-											 (u32)*(u16 *)operands[0], (u32)*(u16 *)operands[1],
-											 arithmetic_addition, TRUE);
-			*(u16 *)operands[0] += *(u16 *)operands[1];
-		} else {
-			arithmetic_update_register_flags(output, &machine_state->flags,
-											 (u32)*(u8 *)operands[0], (u32)*(u8 *)operands[1],
-											 arithmetic_addition, FALSE);
-			*(u8 *)operands[0] += *(u8 *)operands[1];
-		}
+		arithmetic_update_register_flags(output, &machine_state->flags,
+										 lval, rval, arithmetic_addition, wide_mode);
+		write_by_width(operands[0], lval + rval, wide_mode);
 		fprintf(output, "\n");
 	break;
 	case op_sub:
 		fprintf(output, "%s := %s - %s;", texts[0], texts[0], texts[1]);
-		if (wide_instruction_mode) {
-			arithmetic_update_register_flags(output, &machine_state->flags,
-											 (u32)*(u16 *)operands[0], (u32)*(u16 *)operands[1],
-											 arithmetic_subtraction, TRUE);
-			*(u16 *)operands[0] -= *(u16 *)operands[1];
-		} else {
-			arithmetic_update_register_flags(output, &machine_state->flags,
-											 (u32)*(u8 *)operands[0], (u32)*(u8 *)operands[1],
-											 arithmetic_subtraction, FALSE);
-			*(u8 *)operands[0] -= *(u8 *)operands[1];
-		}
+		arithmetic_update_register_flags(output, &machine_state->flags,
+										 lval, rval, arithmetic_subtraction, wide_mode);
+		write_by_width(operands[0], lval - rval, wide_mode);
 		fprintf(output, "\n");
 	break;
 	case op_cmp:
-		if (wide_instruction_mode) {
-			arithmetic_update_register_flags(output, &machine_state->flags,
-											 (u32)*(u16 *)operands[0], (u32)*(u16 *)operands[1],
-											 arithmetic_subtraction, TRUE);
-			*(u16 *)operands[0] -= *(u16 *)operands[1];
-		} else {
-			arithmetic_update_register_flags(output, &machine_state->flags,
-											 (u32)*(u8 *)operands[0], (u32)*(u8 *)operands[1],
-											 arithmetic_subtraction, FALSE);
-			*(u8 *)operands[0] -= *(u8 *)operands[1];
-		}
+		fprintf(output, "cmp(%s, %s);", texts[0], texts[1]);
+		arithmetic_update_register_flags(output, &machine_state->flags,
+										 lval, rval, arithmetic_subtraction, wide_mode);
 		fprintf(output, "\n");
 	break;
-	default:
-		ASSERT(FALSE, "Unhandled opcode");
+	default: if (is_conditional_transfer_instruction(inst.opcode)) {
+		b32 const OF = machine_state->flags >> register_flags_overflow & 1;
+		b32 const SF = machine_state->flags >> register_flags_sign & 1;
+		b32 const ZF = machine_state->flags >> register_flags_zero & 1;
+		b32 const PF = machine_state->flags >> register_flags_parity & 1;
+		b32 const CF = machine_state->flags >> register_flags_carry & 1;
+		u32 const cx_index = 9;
+		char const *cx_asm = get_assembly_reg((u8)cx_index);
+		u16 *cx = get_machine_reg((u8)cx_index, machine_state);
+		b32 res;
+
+		switch(inst.opcode) {
+		case op_ja  : res = !(CF || ZF);         break;
+		case op_jnb : res = CF == 0;             break;
+		case op_jb  : res = CF == 1;             break;
+		case op_jbe : res = CF || ZF;            break;
+		case op_je  : res = ZF;                  break;
+		case op_jg  : res = !((SF != OF) || ZF); break;
+		case op_jnl : res = !(SF != OF);         break;
+		case op_jl  : res = SF || OF;            break;
+		case op_jle : res = (SF != OF) || ZF;    break;
+		case op_jne : res = !ZF;                 break;
+		case op_jno : res = !OF;                 break;
+		case op_jnp : res = !PF;                 break;
+		case op_jns : res = !SF;                 break;
+		case op_jo  : res = OF;                  break;
+		case op_jp  : res = PF;                  break;
+		case op_js  : res = SF;                  break;
+		case op_jcxz: res = *cx == 0;            break;
+		case op_loop:
+			fprintf(output, "%s := %s - 1;", cx_asm, cx_asm);
+			arithmetic_update_register_flags(output, &machine_state->flags, (u32)*cx, (u32)*cx - 1U,
+											 arithmetic_subtraction, wide_mode);
+			*cx -= 1;
+			res = *cx != 0;
+			fprintf(output, "\n");
+		break;
+		case op_loopz:
+			fprintf(output, "%s := %s - 1;", cx_asm, cx_asm);
+			arithmetic_update_register_flags(output, &machine_state->flags, (u32)*cx, (u32)*cx - 1U,
+											 arithmetic_subtraction, wide_mode);
+			*cx -= 1;
+			res = *cx != 0 && (machine_state->flags >> register_flags_zero & 1);
+			fprintf(output, "\n");
+		break;
+		case op_loopnz:
+			fprintf(output, "%s := %s - 1;", cx_asm, cx_asm);
+			arithmetic_update_register_flags(output, &machine_state->flags, (u32)*cx, (u32)*cx - 1U,
+											 arithmetic_subtraction, wide_mode);
+			*cx -= 1;
+			res = *cx != 0 && !(machine_state->flags >> register_flags_zero & 1);
+			fprintf(output, "\n");
+		break;
+		default: ASSERT(FALSE, "Unhandled conditional transfer opcode"); break;
+		}
+
+		if (res) {
+			machine_state->instruction_pointer += *(i32 *)operands[0];
+			fprintf(output, "ip := 0x%04x\n", machine_state->instruction_pointer);
+		}
 	break;
+	} else {
+		ASSERT(FALSE, "Unhandled opcode");
+	} break;
 	}
 
-	fprintf(output, "\n");
+	if (debug_level >= 1) fprintf(output, "\n");
 }
 
 void print_machine_state(FILE *output, struct machine_state state, u32 debug_level) {
@@ -177,14 +235,14 @@ void print_machine_state(FILE *output, struct machine_state state, u32 debug_lev
 		1, 6, 10,
 		2, 7, 11
 	};
-	u32 const linear_print_order[12] = {0, 3, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11};
+	u32 const linear_print_order[13] = {0, 3, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12};
 	u32 flag_count = 0;
 	u32 i;
 
 	fprintf(output, "Final registers:\n");
 
 	if (debug_level >= 1) {
-		for (i = 0; i < 12; i += 1) {
+		for (i = 0; i < 13; i += 1) {
 			char const *label = word_register_labels[linear_print_order[i]];
 			u16 const value = state.data[linear_print_order[i]].word;
 
@@ -214,5 +272,6 @@ void print_machine_state(FILE *output, struct machine_state state, u32 debug_lev
 			flag_count += 1;
 		}
 	}
+
 	fprintf(output, "\n");
 }

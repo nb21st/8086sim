@@ -39,3 +39,7 @@ const char *mnemonic_arr[] = {
 #include "instructions.inl"
 
 };
+
+b32 is_shift_instruction(enum opcode opcode);
+b32 is_string_instruction(enum opcode opcode);
+b32 is_conditional_transfer_instruction(enum opcode opcode);

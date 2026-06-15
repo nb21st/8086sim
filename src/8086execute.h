@@ -33,7 +33,6 @@ struct machine_state {
 	} data[4];
 	u16 pi[4];
 	u16 seg[4];
-	
 	u16 instruction_pointer;
 	u16 flags;
 };
@@ -43,8 +42,9 @@ char const *byte_register_labels[8] = {
 	"ah", "ch", "dh", "bh",
 };
 
-char const *word_register_labels[12] = {
+char const *word_register_labels[13] = {
 	"ax", "cx", "dx", "bx",
 	"sp", "bp", "si", "di",
 	"es", "cs", "ss", "ds",
+	"ip",
 };

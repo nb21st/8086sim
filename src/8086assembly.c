@@ -2,7 +2,7 @@ void print_all_instructions(FILE *output,
 							struct asm_buffer const asm_buf,
 							u8 const *bytes,
 							u32 const debug_level) {
-	char const *label = "\nlabel%u:\n";
+	char const *label = "\nlabel_%u:\n";
 	u32 at = 0;
 	u32 i;
 	
@@ -43,7 +43,7 @@ void get_and_mark_label_number(struct asm_buffer *asm_buf,
 	}
 	
 	while (displacement > 0) {
-		displacement -= asm_buf->instruction_sizes[label_line - 1];
+		displacement -= asm_buf->instruction_sizes[label_line - (direction == -1)];
 		label_line += direction;
 	}
 
@@ -103,7 +103,7 @@ b32 is_shift_instruction(enum opcode opcode) {
 b32 is_string_instruction(enum opcode opcode) {
 	return opcode >= op_movs && opcode <= op_stos;
 }
-b32 is_conditional_jump_instruction(enum opcode opcode) {
+b32 is_conditional_transfer_instruction(enum opcode opcode) {
 	return opcode >= op_je && opcode <= op_jcxz;
 }
 
@@ -188,14 +188,14 @@ void format_instruction(FILE *output,
 		break;
 		case operand_relative_immediate:
 			if (asm_buf == NULL) {
-				sprintf(temp_operand_asm, "; %i", inst.operands[i].value.data);
+				sprintf(temp_operand_asm, "$%+i", inst.operands[i].value.data);
 				break;
 			}
 			
 			asm_buf->ip_incs[asm_buf->instruction_count] = inst.operands[i].value.data;
 			if ((asm_buf->is_cond_jumps[asm_buf->instruction_count] =
-				 is_conditional_jump_instruction(inst.opcode))) {
-				sprintf(temp_operand_asm, "label%%u ; %i", inst.operands[i].value.data);
+				 is_conditional_transfer_instruction(inst.opcode))) {
+				sprintf(temp_operand_asm, "label_%%u ; %+i", inst.operands[i].value.data);
 			} else {
 				if (inst.opcode == op_jmp && !(inst.flags >> flags_wide & 1)) strcat(target_asm, "short "); /* nasm aligned */
 				
@@ -210,13 +210,12 @@ void format_instruction(FILE *output,
 	if (asm_buf == NULL) {
 		fprintf(output, target_asm);
 		fprintf(output, "\n");
-	} else asm_buf->instruction_sizes[asm_buf->instruction_count] = inst.size;
-
-	if (debug_level >= 2) {
-		fprintf(stderr, target_asm);
-		fprintf(stderr, "\n");
-		if (debug_level >= 3) {
+	} else {
+		asm_buf->instruction_sizes[asm_buf->instruction_count] = inst.size;
+		if (debug_level >= 2) {
+			fprintf(stderr, target_asm);
 			fprintf(stderr, "\n");
+			if (debug_level >= 3) fprintf(stderr, "\n");
 		}
 	}
 }
