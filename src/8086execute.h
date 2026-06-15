@@ -11,8 +11,8 @@ struct machine_state {
 };
 
 char const *byte_register_labels[8] = {
-	"al", "ah", "cl", "ch",
-	"dl", "dh", "bl", "bh",
+	"al", "cl", "dl", "bl",
+	"ah", "ch", "dh", "bh",
 };
 
 char const *word_register_labels[12] = {

@@ -1,4 +1,7 @@
-void print_all_instructions(FILE *output, struct asm_buffer const asm_buf, u8 const *bytes, u32 const debug_level) {
+void print_all_instructions(FILE *output,
+							struct asm_buffer const asm_buf,
+							u8 const *bytes,
+							u32 const debug_level) {
 	char const *label = "\nlabel%u:\n";
 	u32 at = 0;
 	u32 i;
@@ -104,15 +107,24 @@ b32 is_conditional_jump_instruction(enum opcode opcode) {
 	return opcode >= op_je && opcode <= op_jcxz;
 }
 
-void format_instruction(struct instruction inst, struct asm_buffer *asm_buf, u32 bytes_at, u32 const debug_level) {
-	char *target_asm = asm_buf->texts + asm_buf->bytes_per_text * asm_buf->instruction_count;
+void format_instruction(FILE *output,
+						struct instruction inst,
+						struct asm_buffer *asm_buf,
+						u32 bytes_at,
+						u32 const debug_level) {
+	char *target_asm;
+	char temp_asm[MAX_INSTRUCTION_ASM_SIZE];
 	char temp_operand_asm[MAX_OPERAND_ASM_SIZE];
 	u32 operand_count = 2;
 	u32 i, ea_mode;
 
 	if (inst.opcode == op_none) return;
 
-	target_asm[0] = '\t';
+	if (asm_buf == NULL) target_asm = temp_asm;
+	else {
+		target_asm = asm_buf->texts + asm_buf->bytes_per_text * asm_buf->instruction_count;
+		target_asm[0] = '\t';
+	}
 
 	if (inst.flags >> flags_lock & 1) strcat(target_asm, "lock ");
 	if (inst.flags >> flags_rep & 1) strcat(target_asm, "rep ");
@@ -175,12 +187,18 @@ void format_instruction(struct instruction inst, struct asm_buffer *asm_buf, u32
 			sprintf(temp_operand_asm, "%i", inst.operands[i].value.data);
 		break;
 		case operand_relative_immediate:
+			if (asm_buf == NULL) {
+				sprintf(temp_operand_asm, "; %i", inst.operands[i].value.data);
+				break;
+			}
+			
 			asm_buf->ip_incs[asm_buf->instruction_count] = inst.operands[i].value.data;
 			if ((asm_buf->is_cond_jumps[asm_buf->instruction_count] =
 				 is_conditional_jump_instruction(inst.opcode))) {
 				sprintf(temp_operand_asm, "label%%u ; %i", inst.operands[i].value.data);
 			} else {
 				if (inst.opcode == op_jmp && !(inst.flags >> flags_wide & 1)) strcat(target_asm, "short "); /* nasm aligned */
+				
 				sprintf(temp_operand_asm, "%i", inst.operands[i].value.data + bytes_at + inst.size);
 			}
 		break;
@@ -188,8 +206,11 @@ void format_instruction(struct instruction inst, struct asm_buffer *asm_buf, u32
 		
 		strcat(target_asm, temp_operand_asm);
 	}
-
-	asm_buf->instruction_sizes[asm_buf->instruction_count] = inst.size;
+	
+	if (asm_buf == NULL) {
+		fprintf(output, target_asm);
+		fprintf(output, "\n");
+	} else asm_buf->instruction_sizes[asm_buf->instruction_count] = inst.size;
 
 	if (debug_level >= 2) {
 		fprintf(stderr, target_asm);

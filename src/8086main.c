@@ -262,11 +262,13 @@ err simulate_8086(u8 const *memory, i32 const total_bytes, FILE *output, enum si
 
 		switch (sim_mode) {
 		case sim_mode_decode:
-			format_instruction(inst, &asm_buf, bytes_at, debug_level);
+			format_instruction(NULL, inst, &asm_buf, bytes_at, debug_level);
 			if (inst.opcode != op_none) asm_buf.instruction_count += 1;
 		break;
 		case sim_mode_exec:
-			execute_instruction(inst, &machine_state, debug_level);
+			fprintf(output, "@");
+			format_instruction(output, inst, NULL, bytes_at, debug_level);
+			execute_instruction(output, inst, &machine_state, debug_level);
 		break;
 		}
 		
