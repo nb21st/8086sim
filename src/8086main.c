@@ -140,7 +140,6 @@ next_encoding:
 		b32 const rm_is_src = direction;
 		
 		b32 const immediate_mode = bits[bits_data] != -1;
-		b32 const wide_immediate_mode = wide_instruction_mode;
 		b32 const sign_immediate_mode = bits[bits_s];
 
 		b32 const relative_jump_mode = bits[bits_is_rel_jmp] == 1;
@@ -206,12 +205,8 @@ next_encoding:
 			else operand->type = operand_immediate;
 			operand->value.data = (bits[bits_data_if_w] << 8) | bits[bits_data];
 			/* sign-extension */
-			if (!wide_immediate_mode) {
-				if (sign_immediate_mode && operand->value.data >> 7) {
-					operand->value.data |= 0xffffff00;
-				}
-			} else if (operand->value.data >> 15) {
-				operand->value.data |= 0xffff0000;
+			if (sign_immediate_mode && (operand->value.data & 0x80) != 0) {
+				operand->value.data |= 0xffffff00;
 			}
 		}
 
