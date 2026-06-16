@@ -20,16 +20,21 @@ make
 ./build/8086sim decode samples/05_completionist_decode
 
 # Execute a binary
-./build/8086sim exec samples/08_challenge_register_movs
+./build/8086sim exec samples/16_add_loop_challenge
+
+# Extract memory
+./build/8086sim exec samples/17_render_gradient --dump image.data
 ```
 
 
 Dependency
 ----------
 
-The decoder has no dependency.
+The decoder has no dependency other than a C compiler.
 
-The decoder testing script requires `nasm` assembler to work.
+The decoder testing script requires Go compiler and `nasm` assembler to work.
+
+Note that `make debug` builds and calls the testing script for ensuring a success build as well.
 
 
 "No AI" Policy
