@@ -5,6 +5,36 @@ enum arithmetic_type {
 	arithmetic_division
 };
 
+enum register_ {
+	register_al,
+	register_cl,
+	register_dl,
+	register_bl,
+
+	register_ah,
+	register_ch,
+	register_dh,
+	register_bh,
+
+	register_ax,
+	register_cx,
+	register_dx,
+	register_bx,
+
+	register_sp,
+	register_bp,
+	register_si,
+	register_di,
+
+	register_cs,
+	register_ds,
+	register_ss,
+	register_es,
+
+	register_ip,
+	register_flags
+};
+
 enum register_flags {
 	register_flags_carry,
 	register_flags_parity,

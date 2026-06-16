@@ -32,21 +32,33 @@ void *get_machine_reg(u8 reg, struct machine_state *machine) {
 	else if (reg < 12) result = &machine->data[reg - 8].word;
 	else if (reg < 16) result = &machine->pi[reg - 12];
 	else if (reg < 20) result = &machine->seg[reg - 16];
+	else if (reg == 20) result = &machine->instruction_pointer;
+	else if (reg == 21) result = &machine->flags;
 	ASSERT(result != NULL, "Function 'find_machine_reg' shouldn't return NULL");
 
 	return result;
 }
 
-u32 calculate_total_displacement(struct machine_state *state, u32 rm, u32 displacement) {
-	u32 res = 0;
+u32 calculate_total_displacement(struct machine_state *state, u32 rm, u32 DISP) {
+	u32 const BX = read_by_width(get_machine_reg(register_bx, state), TRUE);
+	u32 const BP = read_by_width(get_machine_reg(register_bp, state), TRUE);
+	u32 const SI = read_by_width(get_machine_reg(register_si, state), TRUE);
+	u32 const DI = read_by_width(get_machine_reg(register_di, state), TRUE);
+	u32 res;
 
-	if (rm == 8) return displacement;
-	if (rm % 7 == 0 || rm == 1) res += read_by_width(get_machine_reg(8 + 3, state), TRUE);
-	if (rm % 3 == 0 && rm != 7) res += read_by_width(get_machine_reg(12 + 1, state), TRUE);
-	if (rm % 2 == 0 && rm != 6) res += read_by_width(get_machine_reg(12 + 2, state), TRUE);
-	if (rm % 2 == 1 && rm != 7) res += read_by_width(get_machine_reg(12 + 3, state), TRUE);
+	switch (rm) {
+	case 0: res = BX + SI + DISP; break;
+	case 1: res = BX + DI + DISP; break;
+	case 2: res = BP + SI + DISP; break;
+	case 3: res = BP + DI + DISP; break;
+	case 4: res = SI + DISP;      break;
+	case 5: res = DI + DISP;      break;
+	case 6: res = BP + DISP;      break;
+	case 7: res = BX + DISP;      break;
+	case 8: res = DISP;           break;
+	}
 
-	return res + displacement;
+	return res;
 }
 
 void arithmetic_update_register_flags(FILE *output, u16 *flags, u32 value0, u32 value1,
@@ -231,24 +243,24 @@ void execute_instruction(FILE *output,
 		case op_jcxz: res = read_by_width(cx, TRUE)  == 0; break;
 		case op_loop:
 			fprintf(output, "%s := 0x%04x; ", cx_asm, read_by_width(cx, TRUE) - 1U);
-			arithmetic_update_register_flags(output, &machine_state->flags, (u32)read_by_width(cx, TRUE), (u32)read_by_width(cx, TRUE) - 1U,
-											 arithmetic_subtraction, wide_mode);
+			arithmetic_update_register_flags(output, &machine_state->flags, (u32)read_by_width(cx, TRUE),
+											 (u32)read_by_width(cx, TRUE) - 1U, arithmetic_subtraction, wide_mode);
 			write_by_width(cx, read_by_width(cx, TRUE) - 1, TRUE);
 			res = read_by_width(cx, TRUE) != 0;
 			fprintf(output, "\n");
 		break;
 		case op_loopz:
 			fprintf(output, "%s := 0x%04x; ", cx_asm, read_by_width(cx, TRUE) - 1U);
-			arithmetic_update_register_flags(output, &machine_state->flags, (u32)read_by_width(cx, TRUE), (u32)read_by_width(cx, TRUE) - 1U,
-											 arithmetic_subtraction, wide_mode);
+			arithmetic_update_register_flags(output, &machine_state->flags, (u32)read_by_width(cx, TRUE),
+											 (u32)read_by_width(cx, TRUE) - 1U, arithmetic_subtraction, wide_mode);
 			write_by_width(cx, read_by_width(cx, TRUE) - 1, TRUE);
 			res = read_by_width(cx, TRUE) != 0 && (machine_state->flags >> register_flags_zero & 1);
 			fprintf(output, "\n");
 		break;
 		case op_loopnz:
 			fprintf(output, "%s := 0x%04x; ", cx_asm, read_by_width(cx, TRUE) - 1U);
-			arithmetic_update_register_flags(output, &machine_state->flags, (u32)read_by_width(cx, TRUE), (u32)read_by_width(cx, TRUE) - 1U,
-											 arithmetic_subtraction, wide_mode);
+			arithmetic_update_register_flags(output, &machine_state->flags, (u32)read_by_width(cx, TRUE),
+											 (u32)read_by_width(cx, TRUE) - 1U, arithmetic_subtraction, wide_mode);
 			write_by_width(cx, read_by_width(cx, TRUE) - 1, TRUE);
 			res = read_by_width(cx, TRUE) != 0 && !(machine_state->flags >> register_flags_zero & 1);
 			fprintf(output, "\n");
