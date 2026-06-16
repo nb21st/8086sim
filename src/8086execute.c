@@ -168,10 +168,17 @@ void execute_instruction(FILE *output,
 		fprintf(output, wide_mode ? "%s := 0x%04x; \n" : "%s := 0x%02x; \n", texts[0], rval);
 	break;
 	case op_add:
-		fprintf(output, wide_mode ? "%s := 0x%04x; " : "%s := 0x%02x; ", texts[0], lval + rval);
+		fprintf(output, wide_mode ? "%s := 0x%04x; " : "%s := 0x%02x; ", texts[0], (u16)(lval + rval));
 		arithmetic_update_register_flags(output, &machine_state->flags,
 										 lval, rval, arithmetic_addition, wide_mode);
 		write_by_width(operands[0], lval + rval, wide_mode);
+		fprintf(output, "\n");
+	break;
+	case op_inc:
+		fprintf(output, wide_mode ? "%s := 0x%04x; " : "%s := 0x%02x; ", texts[0], (u16)(lval + 1));
+		arithmetic_update_register_flags(output, &machine_state->flags,
+										 lval, 1, arithmetic_addition, wide_mode);
+		write_by_width(operands[0], lval + 1, wide_mode);
 		fprintf(output, "\n");
 	break;
 	case op_sub:
@@ -179,6 +186,13 @@ void execute_instruction(FILE *output,
 		arithmetic_update_register_flags(output, &machine_state->flags,
 										 lval, rval, arithmetic_subtraction, wide_mode);
 		write_by_width(operands[0], lval - rval, wide_mode);
+		fprintf(output, "\n");
+	break;
+	case op_dec:
+		fprintf(output, wide_mode ? "%s := 0x%04x; " : "%s := 0x%02x; ", texts[0], (u16)(lval - 1));
+		arithmetic_update_register_flags(output, &machine_state->flags,
+										 lval, 1, arithmetic_subtraction, wide_mode);
+		write_by_width(operands[0], lval - 1, wide_mode);
 		fprintf(output, "\n");
 	break;
 	case op_cmp:

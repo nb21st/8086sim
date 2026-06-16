@@ -59,6 +59,10 @@ func main() {
 	}
 	
 	fmt.Printf("(%v/%v passed)\n", pass_count, sample_count)
+
+	if pass_count < sample_count {
+		os.Exit(1)
+	}
 }
 
 func tester_compare(filename string, index int) {

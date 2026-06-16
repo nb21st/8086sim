@@ -76,15 +76,15 @@ err asm_buffer_initialize(struct asm_buffer *result) {
 			   sizeof *result->is_cond_jumps +
 			   sizeof *result->ip_incs +
 			   sizeof *result->instruction_sizes,
-			   MAX_INSTRUCTIONS);
+			   MEMORY_SIZE);
 
 	if (result->memory_block == NULL) return 1;
 
 	result->texts             = result->memory_block;
-	result->label_numbers     = (u16 *)(result->texts         + MAX_INSTRUCTIONS * MAX_INSTRUCTION_ASM_SIZE);
-	result->is_cond_jumps     = (b8  *)(result->label_numbers + MAX_INSTRUCTIONS);
-	result->ip_incs           = (i16 *)(result->is_cond_jumps + MAX_INSTRUCTIONS);
-	result->instruction_sizes = (u8  *)(result->ip_incs       + MAX_INSTRUCTIONS);
+	result->label_numbers     = (u16 *)(result->texts         + MEMORY_SIZE * MAX_INSTRUCTION_ASM_SIZE);
+	result->is_cond_jumps     = (b8  *)(result->label_numbers + MEMORY_SIZE);
+	result->ip_incs           = (i16 *)(result->is_cond_jumps + MEMORY_SIZE);
+	result->instruction_sizes = (u8  *)(result->ip_incs       + MEMORY_SIZE);
 
 	result->label_count = 0;
 	result->bytes_per_text = MAX_INSTRUCTION_ASM_SIZE;

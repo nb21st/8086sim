@@ -27,8 +27,7 @@ typedef u32 b32;
 #endif
 
 /* TODO: Make decoder capable of disassemble binary larger than 1MiB and take more than 64 KiB instructions */
-#define MAX_BYTES_READ 1024 * 1024
-#define MAX_INSTRUCTIONS 256 * 256
+#define MEMORY_SIZE (256 * 256)
 #define MAX_INSTRUCTION_ASM_SIZE 48
 #define MAX_OPERAND_ASM_SIZE 32
 

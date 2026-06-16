@@ -2,8 +2,10 @@ char const *help =
 "Usage: 8086sim decode [options...] file\n"
 "       8086sim exec   [options...] file\n"
 "Options:\n"
-"  -o <file> Write output to file.\n"
-"  -d<0-3>   Specify debug printing level.\n";
+"  -o <file>     Write output to file.\n"
+"  -d<0-3>       Specify debug printing level.\n"
+"Execute options:\n"
+"  --dump <file> Write final memory to file.\n";
 
 void debug_output_binary_instruction(FILE *pipe, i32 at, u32 byte_count, u8 const *input) {
 	char output[8 * 6 + 7];
@@ -228,7 +230,7 @@ next_encoding:
 	return 0;
 }
 
-err simulate_8086(u8 const *memory, i32 const total_bytes, FILE *output, enum sim_mode sim_mode, u32 debug_level) {
+err simulate_8086(u8 *memory, i32 const total_bytes, FILE *output, enum sim_mode sim_mode, u32 debug_level) {
 	struct asm_buffer asm_buf;
 	struct machine_state machine_state;
 	i32 bytes_left = total_bytes;
@@ -245,6 +247,7 @@ err simulate_8086(u8 const *memory, i32 const total_bytes, FILE *output, enum si
 	break;
 	case sim_mode_exec:
 		memset(&machine_state, 0, sizeof machine_state);
+		machine_state.memory = memory;
 	break;
 	}
 
@@ -313,15 +316,21 @@ err load_memory_from_file(void *memory, char *input_filename, u32 *bytes_read) {
 
 int main(int arg_count, char **args) {
 	enum sim_mode mode;
-	FILE *output = stdout;
 	u32 debug_level = 0;
+
+	FILE *output = stdout;
+	FILE *dump_output = NULL;
 	char *input_filename = NULL;
 	char *output_filename = NULL;
+	char *dump_output_filename = NULL;
+
 	b32 output_to_file_mode = FALSE;
+	b32 dump_to_memory_mode = FALSE;
+
 	u32 bytes_read, i;
 	err error;
 
-	void *memory = malloc(MAX_BYTES_READ);
+	void *memory = malloc(MEMORY_SIZE);
 
 	if (arg_count < 2) goto misuse;
 
@@ -341,32 +350,49 @@ int main(int arg_count, char **args) {
 				if (args[i][2] != '\0') goto misuse;
 				output_to_file_mode = TRUE;
 			break;
+			case '-':
+				if (strcmp(args[i] + 2, "dump") == 0) {
+					dump_to_memory_mode = TRUE;
+				} else goto misuse;
+			break;
 			default: goto misuse;
 			}
 		} else if (output_to_file_mode && output_filename == NULL) output_filename = args[i];
+		else if (dump_to_memory_mode && dump_output_filename == NULL) dump_output_filename = args[i];
 		else if (input_filename == NULL) input_filename = args[i];
 		else goto misuse;
 	}
 
 	if (input_filename == NULL) goto misuse;
-	if (output_filename != NULL) output = fopen(output_filename, "wb");
-
-	if (output == NULL) {
-		fprintf(stderr, "ERROR: Unable to open output file\n");
-		goto failed_exit;
+	if (output_filename != NULL) {
+		output = fopen(output_filename, "wb");
+		if (output == NULL) {
+			fprintf(stderr, "ERROR: Unable to open output file\n");
+			goto failed_exit;
+		}
+	}
+	if (dump_to_memory_mode) {
+		if (dump_output_filename == NULL || mode != sim_mode_exec) goto misuse;
+		dump_output = fopen(dump_output_filename, "wb");
+		if (dump_output == NULL) {
+			fprintf(stderr, "ERROR: Unable to open dump output file\n");
+			goto failed_exit;
+		}
 	}
 
 	error = load_memory_from_file(memory, input_filename, &bytes_read);
 	if (error) goto misuse;
 
-	error = simulate_8086((u8 *)memory, (u32)bytes_read, output, mode, debug_level);
+	error = simulate_8086((u8 *)memory, bytes_read, output, mode, debug_level);
 	if (error) goto failed_exit;
 
-	if (output != stdout) fclose(output);
+	if (dump_to_memory_mode) fwrite(memory, 1, MEMORY_SIZE, dump_output);
+
+	if (output_filename != NULL) fclose(output);
 	free(memory);
 	return 0;
 misuse:
-	if (output != stdout) {
+	if (output_filename != NULL) {
 		fclose(output);
 		remove(output_filename);
 	}
@@ -374,7 +400,7 @@ misuse:
 	fprintf(stderr, help);
 	return 1;
 failed_exit:
-	if (output != stdout && output != NULL) {
+	if (output_filename != NULL && output != NULL) {
 		fclose(output);
 		remove(output_filename);
 	}

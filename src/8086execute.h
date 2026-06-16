@@ -36,7 +36,7 @@ struct machine_state {
 	u16 instruction_pointer;
 	u16 flags;
 
-	u8 memory[256 * 256];
+	u8 *memory;
 };
 
 char const *byte_register_labels[8] = {
