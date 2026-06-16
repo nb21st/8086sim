@@ -5,9 +5,9 @@ void print_all_instructions(FILE *output,
 	char const *label = "\nlabel_%u:\n";
 	u32 at = 0;
 	u32 i;
-	
+
 	fprintf(output, "CPU 8086\n\n");
-	
+
 	for (i = 0; i < asm_buf.instruction_count; i += 1) {
 		if (asm_buf.label_numbers[i]) {
 			fprintf(output, label, asm_buf.label_numbers[i] - 1);
@@ -36,12 +36,12 @@ void get_and_mark_label_number(struct asm_buffer *asm_buf,
 	i32 direction = 1;
 	i32 displacement = ip_inc;
 	u32 label_line = instruction_number + 1;
-	
+
 	if (displacement < 0) {
 		direction = -1;
 		displacement *= -1;
 	}
-	
+
 	while (displacement > 0) {
 		displacement -= asm_buf->instruction_sizes[label_line - (direction == -1)];
 		label_line += direction;
@@ -77,7 +77,7 @@ err asm_buffer_initialize(struct asm_buffer *result) {
 			   sizeof *result->ip_incs +
 			   sizeof *result->instruction_sizes,
 			   MAX_INSTRUCTIONS);
-	
+
 	if (result->memory_block == NULL) return 1;
 
 	result->texts             = result->memory_block;
@@ -85,11 +85,11 @@ err asm_buffer_initialize(struct asm_buffer *result) {
 	result->is_cond_jumps     = (b8  *)(result->label_numbers + MAX_INSTRUCTIONS);
 	result->ip_incs           = (i16 *)(result->is_cond_jumps + MAX_INSTRUCTIONS);
 	result->instruction_sizes = (u8  *)(result->ip_incs       + MAX_INSTRUCTIONS);
-	
+
 	result->label_count = 0;
 	result->bytes_per_text = MAX_INSTRUCTION_ASM_SIZE;
 	result->instruction_count = 0;
-	
+
 	return 0;
 }
 
@@ -135,6 +135,13 @@ void format_instruction(FILE *output,
 		strcat(target_asm, inst.flags >> flags_wide & 1 ? "w" : "b");
 	}
 
+	if (inst.operands[0].type == operand_memory && inst.flags >> flags_far & 1) {
+		strcat(target_asm, " far");
+	} else if (inst.operands[0].type == operand_memory && (inst.operands[1].type != operand_register || is_shift_instruction(inst.opcode))) {
+		if (inst.flags >> flags_wide & 1) strcat(target_asm, " word");
+		else strcat(target_asm, " byte");
+	}
+
 	for (i = 0; i < 2; i += 1) {
 		if (inst.operands[i].type != operand_none) {
 			if (i == 0) strcat(target_asm, " ");
@@ -142,7 +149,7 @@ void format_instruction(FILE *output,
 				strcat(target_asm, ":");
 			} else strcat(target_asm, ", ");
 		}
-		
+
 		switch (inst.operands[i].type) {
 		case operand_none:
 			operand_count -= 1;
@@ -160,15 +167,6 @@ void format_instruction(FILE *output,
 				ea_mode = 2;
 			}
 
-			if (inst.opcode == op_call || inst.opcode == op_jmp) {
-				if (inst.flags >> flags_far & 1) strcat(target_asm, "far ");
-			} else if (inst.opcode != op_mov && (inst.operands[1].type == operand_immediate ||
-												 inst.operands[1].type == operand_none ||
-												 is_shift_instruction(inst.opcode))) {
-				if (inst.flags >> flags_wide & 1) strcat(target_asm, "word ");
-				else strcat(target_asm, "byte ");
-			}
-
 			if (inst.flags >> flags_segment & 1) {
 				strcat(target_asm, reg_field_asm_text[2][inst.flags >> flags_segment_register & 3]);
 				strcat(target_asm, ":");
@@ -179,11 +177,6 @@ void format_instruction(FILE *output,
 					inst.operands[i].value.effective_address.displacement);
 		break;
 		case operand_immediate:
-			if (inst.opcode == op_mov) {
-				if (inst.flags >> flags_wide & 1) strcat(target_asm, "word ");
-				else strcat(target_asm, "byte ");
-			}
-			
 			sprintf(temp_operand_asm, "%i", inst.operands[i].value.data);
 		break;
 		case operand_relative_immediate:
@@ -191,22 +184,22 @@ void format_instruction(FILE *output,
 				sprintf(temp_operand_asm, "$%+i", inst.operands[i].value.data);
 				break;
 			}
-			
+
 			asm_buf->ip_incs[asm_buf->instruction_count] = inst.operands[i].value.data;
 			if ((asm_buf->is_cond_jumps[asm_buf->instruction_count] =
 				 is_conditional_transfer_instruction(inst.opcode))) {
 				sprintf(temp_operand_asm, "label_%%u ; %+i", inst.operands[i].value.data);
 			} else {
 				if (inst.opcode == op_jmp && !(inst.flags >> flags_wide & 1)) strcat(target_asm, "short "); /* nasm aligned */
-				
+
 				sprintf(temp_operand_asm, "%i", inst.operands[i].value.data + bytes_at + inst.size);
 			}
 		break;
 		}
-		
+
 		strcat(target_asm, temp_operand_asm);
 	}
-	
+
 	if (asm_buf == NULL) {
 		fprintf(output, target_asm);
 		fprintf(output, "\n");

@@ -15,7 +15,7 @@ void debug_output_binary_instruction(FILE *pipe, i32 at, u32 byte_count, u8 cons
 		output[i * 9 + j] = ' ';
 	}
 	output[i * 9 - 1] = '\0';
-	
+
 	if (at < 0) {
 		fprintf(pipe, "%s", output);
 	} else {
@@ -40,7 +40,7 @@ err decode(u8 const *memory, u32 const at, struct instruction *inst, u8 *flags, 
 		bytes_read = 0;
 		bits_read = 0;
 		memset(bits, 0xff, sizeof *bits * bits_count);
-		
+
 		for (cur_bits = cur_enc->bits; cur_bits->type != bits_end; cur_bits += 1) {
 			u8 const bits_remain = 8 - bits_read % 8;
 			u8 bits_value;
@@ -55,7 +55,7 @@ err decode(u8 const *memory, u32 const at, struct instruction *inst, u8 *flags, 
 					valid = FALSE;
 					goto next_encoding;
 				}
-			break;				
+			break;
 			case bits_disp_lo:
 				bits[bits_disp_lo] = 0;
 				bits[bits_disp_hi] = 0;
@@ -97,7 +97,7 @@ next_encoding:
 		fprintf(stderr, "Encoding[%u]\n", (u32)(cur_enc - instruction_table));
 		debug_output_binary_instruction(stderr, at, bytes_read, bytes);
 	}
-	
+
 	inst->size = bytes_read;
 
 	/* Check for flags type of instructions or transfer flags to the instruction */
@@ -117,11 +117,11 @@ next_encoding:
 		*flags = 0;
 	break;
 	}
-	
+
 	{
 		b32 const wide_instruction_mode = bits[bits_w] == 1;
 		b32 const direction = bits[bits_d];
-		
+
 		b32 const v_exist = bits[bits_v] != -1;
 		/* b32 const z_exist = bits[bits_z] != -1; */
 
@@ -130,7 +130,7 @@ next_encoding:
 		b32 const reg_is_src = !direction;
 
 		b32 const seg_reg_exist = bits[bits_seg_reg] != -1;
-		
+
 		b32 const rm_exist = bits[bits_rm] != -1;
 		b32 const rm_reg_mode = bits[bits_mod] == mod_reg;
 		b32 const wide_rm_mode = wide_reg_mode || (bits[bits_rm_is_w] == 1);
@@ -138,13 +138,13 @@ next_encoding:
 		b32 const disp_mode = bits[bits_mod] == mod_mem_8_disp || bits[bits_mod] == mod_mem_16_disp;
 		b32 const wide_disp_mode = bits[bits_mod] == mod_mem_16_disp;
 		b32 const rm_is_src = direction;
-		
+
 		b32 const immediate_mode = bits[bits_data] != -1;
 		b32 const sign_immediate_mode = bits[bits_s];
 
 		b32 const relative_jump_mode = bits[bits_is_rel_jmp] == 1;
 		b32 const far_mode = bits[bits_is_far] == 1;
-	
+
 		inst->flags |= wide_instruction_mode << flags_wide;
 		inst->flags |= far_mode << flags_far;
 
@@ -152,12 +152,12 @@ next_encoding:
 
 		if (reg_exist) {
 			struct instruction_operand *operand = &inst->operands[reg_is_src];
-			
+
 			operand->type = operand_register;
 			operand->value.reg = bits[bits_reg] + 8 * wide_reg_mode;
 		} else if (seg_reg_exist) {
 			struct instruction_operand *operand = &inst->operands[reg_is_src];
-			
+
 			operand->type = operand_register;
 			operand->value.reg = bits[bits_seg_reg] + 8 * 2;
 		} else if (v_exist) {
@@ -174,7 +174,7 @@ next_encoding:
 
 		if (rm_exist) {
 			struct instruction_operand *operand = &inst->operands[rm_is_src];
-			
+
 			if (rm_reg_mode) {
 				operand->type = operand_register;
 				operand->value.reg = bits[bits_rm] + 8 * wide_rm_mode;
@@ -183,9 +183,9 @@ next_encoding:
 				if (direct_address_mode) operand->value.effective_address.rm = 8;
 				else operand->value.effective_address.rm = bits[bits_rm];
 			}
-			
+
 			operand->value.effective_address.displacement = (bits[bits_disp_hi] << 8) | bits[bits_disp_lo];
-			
+
 			/* sign-extension */
 			if (disp_mode && !wide_disp_mode) {
 				if (operand->value.effective_address.displacement >> 7) {
@@ -213,13 +213,13 @@ next_encoding:
 		if (far_mode && immediate_mode) {
 			struct instruction_operand *operands = inst->operands;
 			u32 i = 0;
-			
+
 			if (bits[bits_disp_lo] != -1) {
 				operands[i].type = operand_immediate;
 				operands[i].value.data = (bits[bits_disp_hi] << 8) | bits[bits_disp_lo];
 				i += 1;
 			}
-			
+
 			operands[i].type = operand_immediate;
 			operands[i].value.data = (bits[bits_data_if_w] << 8) | bits[bits_data];
 		}
@@ -247,11 +247,11 @@ err simulate_8086(u8 const *memory, i32 const total_bytes, FILE *output, enum si
 		memset(&machine_state, 0, sizeof machine_state);
 	break;
 	}
-	
+
 	while (bytes_left > 0) {
 		u32 const bytes_at = total_bytes - bytes_left;
 		struct instruction inst = {0};
-		
+
 		error = decode(memory, bytes_at, &inst, &inst_flags, debug_level);
 		if (error) return 1;
 
@@ -262,13 +262,17 @@ err simulate_8086(u8 const *memory, i32 const total_bytes, FILE *output, enum si
 			bytes_left -= inst.size;
 		break;
 		case sim_mode_exec:
-			if (debug_level >= 1) {
+			if (debug_level >= 2) {
 				fprintf(output, "[0x%04x -> 0x%04x]\n",
 						machine_state.instruction_pointer,
 						machine_state.instruction_pointer + inst.size);
+			}
+
+			if (debug_level >= 1) {
 				fprintf(output, "@ ");
 				format_instruction(output, inst, NULL, bytes_at, debug_level);
 			}
+
 			execute_instruction(output, inst, &machine_state, debug_level);
 			bytes_left = total_bytes - machine_state.instruction_pointer;
 		break;
@@ -287,10 +291,10 @@ err simulate_8086(u8 const *memory, i32 const total_bytes, FILE *output, enum si
 		asm_buffer_uninitialize(&asm_buf);
 	break;
 	case sim_mode_exec:
-		print_machine_state(output, machine_state, debug_level);
+		print_machine_state(output, &machine_state, debug_level);
 	break;
 	}
-	
+
 	return 0;
 }
 
@@ -300,7 +304,7 @@ err load_memory_from_file(void *memory, char *input_filename, u32 *bytes_read) {
 		fprintf(stderr, "ERROR: Unable to open input file.\n");
 		return 1;
 	}
-	
+
 	*bytes_read = (u32)fread(memory, 1, 1024 * 1024, input_file);
 
 	fclose(input_file);
@@ -316,7 +320,7 @@ int main(int arg_count, char **args) {
 	b32 output_to_file_mode = FALSE;
 	u32 bytes_read, i;
 	err error;
-	
+
 	void *memory = malloc(MAX_BYTES_READ);
 
 	if (arg_count < 2) goto misuse;
@@ -346,7 +350,7 @@ int main(int arg_count, char **args) {
 
 	if (input_filename == NULL) goto misuse;
 	if (output_filename != NULL) output = fopen(output_filename, "wb");
-	
+
 	if (output == NULL) {
 		fprintf(stderr, "ERROR: Unable to open output file\n");
 		goto failed_exit;
@@ -357,7 +361,7 @@ int main(int arg_count, char **args) {
 
 	error = simulate_8086((u8 *)memory, (u32)bytes_read, output, mode, debug_level);
 	if (error) goto failed_exit;
-	
+
 	if (output != stdout) fclose(output);
 	free(memory);
 	return 0;

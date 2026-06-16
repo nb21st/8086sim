@@ -82,11 +82,11 @@ ALT_INST(pop, BIN(00, 000     ), IMP_D(1), SR, BIN(07, 111), _, _, _, _, _, _, _
 ALT_INST(xchg, BIN(12, 10010   ), IMP_D(0), IMP_W(1), IMP_MOD(3), IMP_RM(0), REG, _, _, _, _, _)                    /*   Register with accumulator     */
 
                                                                                                                     /* in = Input from */
-    INST(in, BIN(72, 1110010 ), IMP_D(1), IMP_REG(0), W, DATA_8, _, _, _, _, _, _)                                  /*   Fixed port    */
+    INST(in, BIN(72, 1110010 ), IMP_S(0), IMP_D(1), IMP_REG(0), W, DATA_8, _, _, _, _, _)                           /*   Fixed port    */
 ALT_INST(in, BIN(76, 1110110 ), IMP_RM_IS_W, W, IMP_D(1), IMP_MOD(3), IMP_REG(0), IMP_RM(2), _, _, _, _)            /*   Variable port */
 
                                                                                                                     /* out = Output from */
-    INST(out, BIN(73, 1110011 ), IMP_D(0), IMP_REG(0), W, DATA_8, _, _, _, _, _, _)                                 /*   Fixed port      */
+    INST(out, BIN(73, 1110011 ), IMP_S(0), IMP_D(0), IMP_REG(0), W, DATA_8, _, _, _, _, _)                          /*   Fixed port      */
 ALT_INST(out, BIN(77, 1110111 ), IMP_RM_IS_W, W, IMP_D(0), IMP_MOD(3), IMP_REG(0), IMP_RM(2), _, _, _, _)           /*   Variable port   */
 
     INST(xlat,  BIN(d7, 11010111), _, _, _, _, _, _, _, _, _, _)                                                    /* xlat = Translate byte to AL */

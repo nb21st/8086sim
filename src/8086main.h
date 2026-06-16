@@ -17,7 +17,7 @@ typedef u32 b32;
 				  (in >= 7 ? 1 << 6 : 0) | (in >= 8 ? 1 << 7 : 0))
 
 #ifdef _DEBUG
-#define ASSERT(exp, msg) if (!exp) {fprintf(stderr, "ASSERTION AT LINE %u: " msg "\n", __LINE__); *(int *)0 = 0; }
+#define ASSERT(exp, msg) if (!(exp)) {fprintf(stderr, "ASSERTION AT LINE %u IN %s: " msg "\n", __LINE__, __FILE__); *(int *)0 = 0; }
 #define LOG_MSG(msg) fprintf(stderr, "LOG: " msg "\n")
 #define LOG_VAR(var, conversion_specifier) fprintf(stderr, "LOG: " #var " = %" #conversion_specifier "\n", var)
 #else
