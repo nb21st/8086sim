@@ -40,6 +40,8 @@
 #define IP_HI     {bits_data_if_w, 8}
 #define CS_LO     {bits_disp_lo,   8}
 #define CS_HI     {bits_disp_hi,   8}
+#define XXX       {bits_data,      3}
+#define YYY       {bits_data_if_w, 3}
 
 #define IMP_S(val)   {bits_s,   0, val}
 #define IMP_W(val)   {bits_w,   0, val}
@@ -51,6 +53,7 @@
 #define IMP_DATA_8(val) {bits_data, 0, val}
 
 #define IMP_RM_IS_W    {bits_rm_is_w,     0, 1}
+#define IMP_DATA_IS_W  {bits_data_is_w,   0, 1}
 #define IMP_IS_REL_JMP {bits_is_rel_jmp,  0, 1}
 #define IMP_FORCE_DISP {bits_force_disp,  0, 1}
 #define IMP_IS_FAR     {bits_is_far,      0, 1}
@@ -191,20 +194,20 @@ ALT_INST(xor, BIN(1a, 0011010 ), IMP_S(0), IMP_D(1), IMP_REG(0), W, DATA, DATA_I
                                                                                                                     /* call = Call:              */
     INST(call, BIN(e8, 11101000), IMP_S(0), IMP_W(1), IP_INC_LO, IP_INC_HI, IMP_IS_REL_JMP, _, _, _, _, _)          /*   Direct within segment   */
 ALT_INST(call, BIN(ff, 11111111), IMP_D(0), IMP_W(1), MOD, BIN(02, 010), RM, DISP_LO, DISP_HI, _, _, _)             /*   Indirect within segment */
-ALT_INST(call, BIN(9a, 10011010), IMP_S(0), IMP_W(1), IMP_FORCE_DISP, IP_LO, IP_HI, CS_LO, CS_HI, IMP_IS_FAR, _, _) /*   Direct intersegment     */
-ALT_INST(call, BIN(ff, 11111111), IMP_W(1), IMP_D(0), MOD, BIN(3, 011), RM, DISP_LO, DISP_HI, IMP_IS_FAR, _, _)     /*   Indirect intersegment   */
+ALT_INST(call, BIN(9a, 10011010), IMP_IS_FAR, IMP_S(0), IMP_W(1), IMP_FORCE_DISP, IP_LO, IP_HI, CS_LO, CS_HI, _, _) /*   Direct intersegment     */
+ALT_INST(call, BIN(ff, 11111111), IMP_IS_FAR, IMP_W(1), IMP_D(0), MOD, BIN(3, 011), RM, DISP_LO, DISP_HI, _, _)     /*   Indirect intersegment   */
 
                                                                                                                     /* jmp = Unconditional Jump:      */
     INST(jmp, BIN(e9, 11101001), IMP_S(0), IMP_W(1), IP_INC_LO, IP_INC_HI, IMP_IS_REL_JMP, _, _, _, _, _)           /*    Direct within segment       */
 ALT_INST(jmp, BIN(eb, 11101011), IMP_S(0), IMP_W(0), IP_INC_8, IMP_IS_REL_JMP, _, _, _, _, _, _)                    /*    Direct within segment-short */
 ALT_INST(jmp, BIN(ff, 11111111), IMP_D(0), IMP_W(1), MOD, BIN(04, 100), RM, DISP_LO, DISP_HI, _, _, _)              /*    Indirect within segment     */
-ALT_INST(jmp, BIN(ea, 11101010), IMP_S(0), IMP_W(1), IMP_FORCE_DISP, IP_LO, IP_HI, CS_LO, CS_HI, IMP_IS_FAR, _, _)  /*    Direct intersegment         */
-ALT_INST(jmp, BIN(ff, 11111111), IMP_W(1), IMP_D(0), MOD, BIN(5, 101), RM, DISP_LO, DISP_HI, IMP_IS_FAR, _, _)      /*    Indirect intersegment       */
+ALT_INST(jmp, BIN(ea, 11101010), IMP_IS_FAR, IMP_S(0), IMP_W(1), IMP_FORCE_DISP, IP_LO, IP_HI, CS_LO, CS_HI, _, _)  /*    Direct intersegment         */
+ALT_INST(jmp, BIN(ff, 11111111), IMP_IS_FAR, IMP_W(1), IMP_D(0), MOD, BIN(5, 101), RM, DISP_LO, DISP_HI, _, _)      /*    Indirect intersegment       */
                                                                                                                     /* ret = Return from CALL:                 */
     INST(ret,  BIN(c3, 11000011), _, _, _, _, _, _, _, _, _, _)                                                     /*   Within segment                        */
 ALT_INST(ret,  BIN(c2, 11000010), IMP_S(0), IMP_W(1), DATA, DATA_IF_W, _, _, _, _, _, _)                            /*   Within segment adding immediate to SP */
     INST(retf, BIN(cb, 11001011), IMP_IS_FAR, _, _, _, _, _, _, _, _, _)                                            /*   Intersegment                          */
-ALT_INST(retf, BIN(ca, 11001010), IMP_S(0), IMP_W(1), DATA, DATA_IF_W, IMP_IS_FAR, _, _, _, _, _)                   /*   Intersegment adding immediate to SP   */
+ALT_INST(retf, BIN(ca, 11001010), IMP_IS_FAR, IMP_S(0), IMP_W(1), DATA, DATA_IF_W, _, _, _, _, _)                   /*   Intersegment adding immediate to SP   */
 
     INST(je,     BIN(74, 01110100), IMP_S(1), IMP_W(0), IP_INC_8, IMP_IS_REL_JMP, _, _, _, _, _, _)                 /* je = Jump on equal|zero                 */
     INST(jl,     BIN(7c, 01111100), IMP_S(1), IMP_W(0), IP_INC_8, IMP_IS_REL_JMP, _, _, _, _, _, _)                 /* jl = Jump on less|not greater or equal  */
@@ -245,7 +248,7 @@ ALT_INST(retf, BIN(ca, 11001010), IMP_S(0), IMP_W(1), DATA, DATA_IF_W, IMP_IS_FA
     INST(sti,  BIN(fb, 11111011), _, _, _, _, _, _, _, _, _, _)                                                     /* sti = Set interrupt               */
     INST(hlt,  BIN(f4, 11110100), _, _, _, _, _, _, _, _, _, _)                                                     /* hlt = Halt                        */
     INST(wait, BIN(9b, 10011011), _, _, _, _, _, _, _, _, _, _)                                                     /* wait = Wait                       */
-/*  INST(esc,  BIN(1b, 11011   ), XXX, MOD, YYY, RM, DISP_LO, DISP_HI, _, _, _, _)                                     esc = Escape (to external device) */
+    INST(esc,  BIN(1b, 11011   ), IMP_S(0), IMP_W(0), IMP_D(1), IMP_DATA_IS_W, XXX, MOD, YYY, RM, DISP_LO, DISP_HI) /* esc = Escape (to external device) */
     INST(lock, BIN(f0, 11110000), _, _, _, _, _, _, _, _, _, _)                                                     /* lock = Bus lock prefix            */
     INST(segment, BIN(01, 001), SR, BIN(6, 110), _, _, _, _, _, _, _, _)                                            /* segment = Override prefix         */
 
@@ -281,6 +284,8 @@ ALT_INST(retf, BIN(ca, 11001010), IMP_S(0), IMP_W(1), DATA, DATA_IF_W, IMP_IS_FA
 #undef IP_HI
 #undef CS_LO
 #undef CS_HI
+#undef XXX
+#undef YYY
 
 #undef IMP_S
 #undef IMP_W

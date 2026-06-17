@@ -56,6 +56,7 @@ u32 calculate_total_displacement(struct machine_state *state, u32 rm, u32 DISP) 
 	case 6: res = BP + DISP;      break;
 	case 7: res = BX + DISP;      break;
 	case 8: res = DISP;           break;
+	default: ASSERT(FALSE, ""); return 0;
 	}
 
 	return res;
@@ -218,9 +219,8 @@ void execute_instruction(FILE *output,
 		b32 const ZF = machine_state->flags >> register_flags_zero & 1;
 		b32 const PF = machine_state->flags >> register_flags_parity & 1;
 		b32 const CF = machine_state->flags >> register_flags_carry & 1;
-		u32 const cx_index = 9;
-		char const *cx_asm = get_assembly_reg((u8)cx_index);
-		void *cx = get_machine_reg((u8)cx_index, machine_state);
+		char const *cx_asm = get_assembly_reg(register_cx);
+		void *cx = get_machine_reg(register_cx, machine_state);
 		b32 res;
 
 		switch(inst.opcode) {

@@ -26,7 +26,6 @@ typedef u32 b32;
 #define LOG_VAR(var, conversion_specifier) {}
 #endif
 
-/* TODO: Make decoder capable of disassemble binary larger than 1MiB and take more than 64 KiB instructions */
 #define MEMORY_SIZE (256 * 256)
 #define MAX_INSTRUCTION_ASM_SIZE 48
 #define MAX_OPERAND_ASM_SIZE 32
@@ -66,6 +65,7 @@ enum instruction_bits_type {
 	bits_data_if_w,
 
 	bits_rm_is_w,
+	bits_data_is_w,
 	bits_is_rel_jmp,
 	bits_force_disp,
 	bits_is_far,

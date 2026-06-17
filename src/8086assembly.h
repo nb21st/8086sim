@@ -1,4 +1,3 @@
-/* TODO: Implement a way to label jump that consumes less space, O(1) ideally */
 struct asm_buffer {
 	void *memory_block;
 	

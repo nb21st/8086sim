@@ -50,7 +50,6 @@ err decode(u8 const *memory, u32 const at, struct instruction *inst, u8 *flags, 
 			if (cur_bits->bit_count == 0) bits_value = cur_bits->value;
 			else bits_value = (bytes[bytes_read] >> (bits_remain - cur_bits->bit_count)) & MASK(cur_bits->bit_count);
 
-			/* NOTE: I think this might be a bad design but I just couldn't come up with a good alternative */
 			switch (cur_bits->type) {
 			case bits_literal:
 				if (bits_value != cur_bits->value) {
@@ -59,6 +58,7 @@ err decode(u8 const *memory, u32 const at, struct instruction *inst, u8 *flags, 
 				}
 			break;
 			case bits_disp_lo:
+				ASSERT((bits[bits_mod] != -1 && bits[bits_rm] != -1) || bits[bits_is_far] == 1, "");
 				bits[bits_disp_lo] = 0;
 				bits[bits_disp_hi] = 0;
 				if ((bits[bits_mod] == mod_mem_no_disp && bits[bits_rm] == 6) || bits[bits_mod] == mod_mem_8_disp ||
@@ -67,6 +67,7 @@ err decode(u8 const *memory, u32 const at, struct instruction *inst, u8 *flags, 
 				} else continue;
 			break;
 			case bits_disp_hi:
+				ASSERT((bits[bits_mod] != -1 && bits[bits_rm] != -1) || bits[bits_is_far] == 1, "");
 				if ((bits[bits_mod] == mod_mem_no_disp && bits[bits_rm] == 6) || bits[bits_mod] == mod_mem_16_disp ||
 					bits[bits_force_disp] == 1) {
 					bits[bits_disp_hi] = bits_value;
@@ -77,7 +78,8 @@ err decode(u8 const *memory, u32 const at, struct instruction *inst, u8 *flags, 
 				bits[bits_data_if_w] = 0;
 			break;
 			case bits_data_if_w:
-				if (bits[bits_w] && !bits[bits_s]) bits[bits_data_if_w] = bits_value;
+				ASSERT((bits[bits_w] != -1 && bits[bits_s] != -1) || bits[bits_is_far] == 1, "");
+				if ((bits[bits_w] == 1 && bits[bits_s] == 0) || bits[bits_data_is_w] == 1) bits[bits_data_if_w] = bits_value;
 				else continue;
 			break;
 			default:
@@ -205,7 +207,9 @@ next_encoding:
 
 			if (relative_jump_mode) operand->type = operand_relative_immediate;
 			else operand->type = operand_immediate;
-			operand->value.data = (bits[bits_data_if_w] << 8) | bits[bits_data];
+
+			if (inst->opcode == op_esc) operand->value.data = (bits[bits_data_if_w] << 3) | bits[bits_data];
+			else operand->value.data = (bits[bits_data_if_w] << 8) | bits[bits_data];
 			/* sign-extension */
 			if (sign_immediate_mode && (operand->value.data & 0x80) != 0) {
 				operand->value.data |= 0xffffff00;
