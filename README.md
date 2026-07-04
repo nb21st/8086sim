@@ -42,4 +42,4 @@ Note that `make debug` builds and calls the testing script for ensuring a succes
 
 Uses of generative AI or LLM are forbidden for this project. The purpose of this project is for the human to learn, not AI.
 
-[Reasons to reject generative AI and LLMs](https://codeberg.org/small-hack/open-slopware#why-not-llms)
+[Reasons to reject generative AI and LLMs](https://codeberg.org/ethical-foss/open-slopware/src/branch/main/why_not_llms.md)
